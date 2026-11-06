@@ -1,11 +1,26 @@
-/* DayCasion Desktop Import. Same palette and type as export.daycasion.com. */
+/* DayCasion Desktop Import. DayCasion branding: navy #0A1640 (the logo), the app's warm cream background and white
+   cards, DM Sans (the app's typeface, self-hosted: SIL Open Font License). Every text/background pair meets WCAG AA. */
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(fonts/dmsans-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(fonts/dmsans-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 html.dc-guard { display: none !important; } /* frame guard: shown only as the top window (app.js) */
-:root { --bg:#f7f4ef; --card:#ffffff; --text:#1f1d1a; --muted:#6b655d; --line:#e6e0d6; --accent:#8a6d3b; --accent-text:#ffffff;
-  --err:#a3312a; --ok:#2f6b3b; --note:#fdf6e9; --note-line:#efdcb5; --sel:#e9dcc3; --shade:rgba(0,0,0,.55); }
-@media (prefers-color-scheme: dark) { :root { --bg:#161513; --card:#201e1b; --text:#f1ece4; --muted:#a59d92; --line:#34302a;
-  --accent:#d2b07a; --accent-text:#1f1d1a; --err:#e07a72; --ok:#7cc48a; --note:#2a241b; --note-line:#4a3d27; --sel:#3d3325; } }
+:root { --bg:#faf7f2; --card:#ffffff; --text:#1b2440; --heading:#0a1640; --muted:#5b6075; --line:#e6e1d8; --accent:#0a1640;
+  --accent-text:#ffffff; --accent-hover:#1d2c66; --link:#0a1640; --err:#a94c4c; --ok:#3e6b47; --note:#eef1f8; --note-line:#c8d0e6;
+  --sel:#e8ecf6; --focus:#5a73cf; --shade:rgba(10,22,64,.6); color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0a1640; --card:#12204f; --text:#eef0f7; --heading:#ffffff; --muted:#aeb6d0;
+  --line:#2a3a73; --accent:#f4f1ea; --accent-text:#0a1640; --accent-hover:#ffffff; --link:#c7d2f5; --err:#f19a94; --ok:#93d3a0;
+  --note:#15255c; --note-line:#33468a; --sel:#1e2e6a; --focus:#8fa6f0; color-scheme: dark; } }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+h1, h2, h3 { color: var(--heading); }
+button, input, select, textarea { font-family: inherit; } /* form controls don't inherit the page font by default */
+a { color: var(--link); text-underline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.brand { display: block; margin: 0 0 14px; line-height: 0; }
+.brand img { height: 44px; width: auto; }
 main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 64px; }
 header h1 { font-size: 26px; margin: 0 0 4px; }
 header p { margin: 0; color: var(--muted); }
@@ -23,8 +38,10 @@ input, select { padding: 10px 12px; font-size: 16px; border-radius: 10px; border
 input.full { width: 100%; }
 button, .btn { display: inline-block; border: 0; border-radius: 24px; padding: 11px 20px; font-size: 16px; font-weight: 600; cursor: pointer;
   background: var(--accent); color: var(--accent-text); text-decoration: none; }
-button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-button.link { background: none; color: var(--accent); padding: 4px 0; font-weight: 500; border-radius: 0; }
+button:not(.secondary):not(.link):not(.profile):not(.tile):not(:disabled):hover, .btn:hover { background: var(--accent-hover); }
+button.secondary { background: transparent; color: var(--link); border: 1px solid var(--accent); }
+button.secondary:not(:disabled):hover { background: var(--sel); }
+button.link { background: none; color: var(--link); padding: 4px 0; font-weight: 500; border-radius: 0; text-decoration: underline; text-underline-offset: 2px; }
 button.small { padding: 6px 12px; font-size: 14px; }
 button:disabled { opacity: .55; cursor: default; }
 .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -34,7 +51,7 @@ button:disabled { opacity: .55; cursor: default; }
 details { margin: 8px 0; }
 summary { cursor: pointer; font-weight: 600; }
 footer { margin-top: 32px; font-size: 14px; color: var(--muted); }
-footer a { color: var(--accent); }
+footer a { color: var(--link); }
 [hidden] { display: none !important; }
 
 /* profiles */
@@ -61,7 +78,7 @@ footer a { color: var(--accent); }
 .dates input { width: 7.5em; }
 .dates input.year { width: 6em; }
 .folders { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); margin-top: 8px; word-break: break-all; }
-.folders button.link { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin-left: 6px; }
+.folders button.link { font: 13px/1.5 "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin-left: 6px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; margin-top: 12px; }
 .tile { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--line); border: 2px solid transparent; padding: 0; cursor: pointer; }
 .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
