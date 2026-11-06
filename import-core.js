@@ -13,7 +13,8 @@
   const LIMITS = { videoBytes: 52428800 };
   function setLimits(l) { if (l && l.videoBytes >= MAX_BYTES) LIMITS.videoBytes = l.videoBytes; }
   const mb = (b) => `${Math.round(b / 1048576)} MB`;
-  const MAX_VIDEO_SECONDS = 30.5; // the app's 30-second limit (memory_media_video_length_check)
+  // Videos: up to 100 MB (the server's max_video_bytes), any length. The length must still be readable.
+  const MAX_READABLE_SECONDS = 999999; // longer than this is not a believable length (and doesn't fit duration_seconds)
   const MAX_FILES = 10000; // per import (dc_import_add_items)
   const DISPLAY_WIDTH = 1024; // display copy, as the app makes (_dcMakeDisplayCopy)
 
@@ -134,17 +135,19 @@
     return { kind: t[0], mime: t[1] };
   }
 
+  /** A video must be readable (a real, positive length). There is no length limit. */
   function checkVideoLength(seconds) {
-    if (!(seconds > 0)) return { skip: true, reason: 'video_length_unknown', message: "DayCasion couldn't read this video's length. Please re-export it as MP4 or MOV." };
-    if (seconds > MAX_VIDEO_SECONDS) return { skip: true, reason: 'video_too_long', message: `Videos can be up to 30 seconds (this one is ${Math.round(seconds)} s). Please trim it first.` };
+    if (!(seconds > 0) || seconds > MAX_READABLE_SECONDS) {
+      return { skip: true, reason: 'video_length_unknown', message: "DayCasion couldn't read this video. Please re-export it as MP4 or MOV." };
+    }
     return null;
   }
 
   const REASONS = {
     unsupported_type: 'Not a photo or video DayCasion can add', empty_file: 'The file is empty',
-    file_too_large: 'Photos can be up to 50 MB and videos up to 100 MB', video_too_long: 'Videos can be up to 30 seconds',
+    file_too_large: 'Photos can be up to 50 MB and videos up to 100 MB',
     profile_not_subscribed: 'A DayCasion plan is needed', 
-    video_length_unknown: "DayCasion couldn't read this video's length", video_not_included: 'Videos are part of the Video plan',
+    video_length_unknown: "DayCasion couldn't read this video", video_not_included: 'Videos are part of the Video plan',
     storage_full: 'Not enough storage left', already_staged: 'Already waiting in Add Past Memories',
     already_in_a_memory: 'Already added to a memory', duplicate_in_selection: 'The same file is also in another folder you chose',
     invalid: "This file couldn't be read", unreadable: "This file couldn't be read",
@@ -152,8 +155,8 @@
 
   // Short reasons for the "skipped" heading (the full reason is listed under it).
   const SHORT_REASONS = {
-    unsupported_type: 'not a photo or video', empty_file: 'empty', file_too_large: 'too large', video_too_long: 'video too long',
-    video_length_unknown: 'video length unreadable', video_not_included: 'videos need the Video plan', storage_full: 'not enough storage',
+    unsupported_type: 'not a photo or video', empty_file: 'empty', file_too_large: 'too large',
+    video_length_unknown: 'video unreadable', video_not_included: 'videos need the Video plan', storage_full: 'not enough storage',
     profile_not_subscribed: 'plan needed', invalid: 'unreadable', unreadable: 'unreadable', limit: 'over the 10,000-file limit',
     already_staged: 'already waiting in the app', already_in_a_memory: 'already in a memory', duplicate_in_selection: 'duplicate',
   };
@@ -585,7 +588,7 @@
     return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
 
-  return { MAX_BYTES, LIMITS, setLimits, MAX_VIDEO_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
+  return { MAX_BYTES, LIMITS, setLimits, MAX_READABLE_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
     checkVideoLength, readJpegExif, readEmbeddedExif, readMp4, readMetadata, exifCapture, suggestGroups, groupDate,
     markDuplicates, makeState, edits, normalizeDate, toPayload, summary, dateLabel, formatBytes, sha256Hex, baseName, dirName };
 });

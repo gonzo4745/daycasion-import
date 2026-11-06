@@ -169,7 +169,7 @@
     fileInput.addEventListener('change', onPick(fileInput));
     const drop = el('div', { class: 'drop', id: 'drop' },
       el('p', { text: S.resume ? 'Drop the same folder here again to continue' : 'Drop folders or photos and videos here' }),
-      el('p', { class: 'muted small', text: `Photos: JPEG, HEIC, PNG or WebP, up to 50 MB. Videos: MP4 or MOV, up to 30 seconds and ${Math.round(C.LIMITS.videoBytes / 1048576)} MB.` }),
+      el('p', { class: 'muted small', text: `Photos: JPEG, HEIC, PNG or WebP, up to 50 MB. Videos: MP4 or MOV, up to ${Math.round(C.LIMITS.videoBytes / 1048576)} MB.` }),
       el('div', { class: 'actions' },
         el('label', { for: 'pick-folder', class: 'btn', role: 'button', tabindex: '0', text: 'Choose a folder' }),
         el('label', { for: 'pick-files', class: 'btn secondary', role: 'button', tabindex: '0', text: 'Choose photos and videos' })),
