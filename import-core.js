@@ -150,6 +150,35 @@
     invalid: "This file couldn't be read", unreadable: "This file couldn't be read",
   };
 
+  // Short reasons for the "skipped" heading (the full reason is listed under it).
+  const SHORT_REASONS = {
+    unsupported_type: 'not a photo or video', empty_file: 'empty', file_too_large: 'too large', video_too_long: 'video too long',
+    video_length_unknown: 'video length unreadable', video_not_included: 'videos need the Video plan', storage_full: 'not enough storage',
+    profile_not_subscribed: 'plan needed', invalid: 'unreadable', unreadable: 'unreadable', limit: 'over the 10,000-file limit',
+    already_staged: 'already waiting in the app', already_in_a_memory: 'already in a memory', duplicate_in_selection: 'duplicate',
+  };
+
+  /** Heading for the files that are not imported, naming the actual reason: "2 duplicate photos skipped",
+   *  "1 file can't be imported: too large", or for mixed reasons "4 files skipped (1 duplicate, 1 too large, …)". */
+  function skippedSummary(skipped) {
+    const by = new Map();
+    for (const s of skipped) by.set(s.reason, (by.get(s.reason) || 0) + 1);
+    const n = skipped.length;
+    const num = (k) => k.toLocaleString();
+    const kinds = new Set(skipped.map((s) => s.kind));
+    const [one, many] = kinds.size === 1 && kinds.has('photo') ? ['photo', 'photos'] : kinds.size === 1 && kinds.has('video') ? ['video', 'videos'] : ['file', 'files'];
+    const noun = (k) => (k === 1 ? one : many);
+    if (by.size === 1) {
+      const reason = [...by.keys()][0];
+      if (reason === 'duplicate_in_selection') return `${num(n)} duplicate ${noun(n)} skipped`;
+      if (reason === 'already_staged') return `${num(n)} ${noun(n)} already waiting in the DayCasion app`;
+      if (reason === 'already_in_a_memory') return `${num(n)} ${noun(n)} already in a memory`;
+      return `${num(n)} ${n === 1 ? 'file' : 'files'} can't be imported: ${SHORT_REASONS[reason] || 'see the reasons below'}`;
+    }
+    const parts = [...by].map(([r, k]) => (r === 'duplicate_in_selection' ? `${num(k)} ${k === 1 ? 'duplicate' : 'duplicates'}` : `${num(k)} ${SHORT_REASONS[r] || r}`));
+    return `${num(n)} files skipped (${parts.join(', ')})`;
+  }
+
   // ---------------------------------------------------------------- metadata: EXIF (JPEG, HEIC) and MP4/MOV
   function readTiff(view, start) {
     const out = {};
@@ -556,7 +585,7 @@
     return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
 
-  return { MAX_BYTES, LIMITS, setLimits, MAX_VIDEO_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, parseFolderName, classify,
+  return { MAX_BYTES, LIMITS, setLimits, MAX_VIDEO_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
     checkVideoLength, readJpegExif, readEmbeddedExif, readMp4, readMetadata, exifCapture, suggestGroups, groupDate,
     markDuplicates, makeState, edits, normalizeDate, toPayload, summary, dateLabel, formatBytes, sha256Hex, baseName, dirName };
 });

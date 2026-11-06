@@ -94,3 +94,14 @@ footer a { color: var(--link); }
 ul.files { list-style: none; padding: 0; margin: 8px 0; max-height: 320px; overflow: auto; }
 ul.files li { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
 ul.files li span.path { word-break: break-all; }
+
+/* page 1 intro, page 2 guide and the proposed-memory note */
+.intro { margin: 0 0 4px; max-width: 62ch; }
+ol.guide { counter-reset: step; list-style: none; padding: 0; margin: 14px 0 4px; display: grid; gap: 10px; }
+ol.guide li { counter-increment: step; position: relative; padding-left: 40px; min-height: 28px; max-width: 72ch; }
+ol.guide li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 14px;
+  background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+ol.guide li strong:first-child { color: var(--heading); }
+.note.about strong { color: var(--heading); }
+.note.about p { margin: 4px 0 0; font-size: 15px; max-width: 80ch; }
+ul.files li.dup { flex-wrap: wrap; }

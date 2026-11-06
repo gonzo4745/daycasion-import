@@ -168,8 +168,8 @@
     folderInput.addEventListener('change', onPick(folderInput));
     fileInput.addEventListener('change', onPick(fileInput));
     const drop = el('div', { class: 'drop', id: 'drop' },
-      el('p', { text: S.resume ? 'Drop the same folder here again to continue' : 'Drop folders, a whole drive folder, or individual photos and videos here' }),
-      el('p', { class: 'muted small', text: `Folders such as 2026 › November › Birthday Party become suggested memories. Photos (JPEG, HEIC, PNG, WebP, up to 50 MB) and videos (MP4, MOV, up to 30 seconds and ${Math.round(C.LIMITS.videoBytes / 1048576)} MB).` }),
+      el('p', { text: S.resume ? 'Drop the same folder here again to continue' : 'Drop folders or photos and videos here' }),
+      el('p', { class: 'muted small', text: `Photos: JPEG, HEIC, PNG or WebP, up to 50 MB. Videos: MP4 or MOV, up to 30 seconds and ${Math.round(C.LIMITS.videoBytes / 1048576)} MB.` }),
       el('div', { class: 'actions' },
         el('label', { for: 'pick-folder', class: 'btn', role: 'button', tabindex: '0', text: 'Choose a folder' }),
         el('label', { for: 'pick-files', class: 'btn secondary', role: 'button', tabindex: '0', text: 'Choose photos and videos' })),
@@ -182,7 +182,8 @@
       if (list.length) scan(list);
     });
     show(card(el('div', { class: 'row' }, el('h2', { text: `Import for ${S.profile.name}` }), el('button', { class: 'link', onclick: viewProfiles, text: 'Change' })),
-      S.resume ? el('p', { class: 'note small', text: `Choose the same folder you used before (${S.resume.batch.source_name || 'your folders'}). Files already uploaded are skipped.` }) : null,
+      S.resume ? el('p', { class: 'note small', text: `Choose the same folder you used before (${S.resume.batch.source_name || 'your folders'}). Files already uploaded are skipped.` })
+        : el('p', { class: 'intro', text: 'Choose whole folders or individual photos and videos. DayCasion suggests memories from how your folders are organized, for example 2019 › July › Beach Trip. You\'ll review everything on the next screen before anything is uploaded.' }),
       drop));
   }
 
@@ -250,7 +251,7 @@
     let next = 0;
     await Promise.all(Array.from({ length: SCANS_AT_ONCE }, async () => { while (next < work.length) await one(work[next++]); }));
     const { kept, duplicates } = C.markDuplicates(valid);
-    for (const d of duplicates) skipped.push({ relativePath: d.relativePath, reason: 'duplicate_in_selection', message: `Same file as ${d.duplicateOf}` });
+    for (const d of duplicates) skipped.push({ relativePath: d.relativePath, reason: 'duplicate_in_selection', kind: d.kind, duplicateOf: d.duplicateOf, message: `Same file as ${d.duplicateOf}` });
     S.files = kept; S.skipped = skipped; S.selected = new Set();
     if (S.resume) return resumeUpload(kept, skipped);
     S.state = C.makeState(kept);
@@ -289,14 +290,28 @@
       el('div', { class: 'row' }, el('h2', { text: `${plural(sum.groups, 'suggested memory', 'suggested memories')} for ${S.profile.name}` }),
         el('button', { class: 'link', onclick: () => { if (confirm('Start over? Your changes on this page will be lost.')) viewChoose(); }, text: 'Start over' })),
       el('p', { text: `${counts(sum.photos, sum.videos)} · ${C.formatBytes(sum.bytes)}` }),
-      el('p', { class: 'muted small', text: 'Each folder became a suggested memory, dated from your folder names (and photo dates when they agree). Rename them, fix dates, move photos between them, combine, split or leave things out. Nothing becomes a memory until you save it in the DayCasion app.' }),
-      el('p', { class: 'muted small', text: 'Want to add these to a memory you already have? Import them here, then in the DayCasion app go to Add Past Memories, tap Review & save and choose “Add to an existing memory”.' }),
+      guide(),
       over ? el('p', { class: 'err', text: `This is more than your remaining storage (${C.formatBytes(Math.max(0, left))}). Leave some photos out, or add storage in the app.` }) : null,
       S.skipped.length ? skippedList(S.skipped) : null,
       el('div', { class: 'actions' }, el('button', { id: 'upload', disabled: !sum.groups || over || null, onclick: confirmUpload,
         text: `Upload ${plural(sum.photos + sum.videos, 'file')} to Add Past Memories` })));
+    const about = el('div', { class: 'note about', role: 'note' },
+      el('strong', { text: 'Each group below is a proposed new memory' }),
+      el('p', { text: 'It isn\'t one of your saved memories yet. Edit its title and date here. When you finish in the app, you can save it as a new memory, or add its files to a memory you\'ve already saved. That memory\'s title, date and story stay as they are.' }));
     const groups = st.groups.map(groupCard);
-    show(selectionBar(), top, ...groups);
+    show(selectionBar(), top, about, ...groups);
+  }
+
+  /** Page 2: the whole journey in four short steps. */
+  function guide() {
+    const step = (title, ...body) => el('li', {}, el('strong', { text: title }), ' ', ...body);
+    return el('ol', { class: 'guide', 'aria-label': 'How it works' },
+      step('Confirm the Memory Profile.', 'These files are for ', el('strong', { text: S.profile.name }), '. ',
+        el('button', { class: 'link', onclick: () => { if (confirm('Choose a different profile? Your changes on this page will be lost.')) viewProfiles(); }, text: 'Choose a different profile' })),
+      step('Review the suggested memories.', 'Edit titles and dates, move photos between memories, or leave files out.'),
+      step('Upload to DayCasion.', 'Files go to a holding area. They aren\'t permanent memories yet.'),
+      step('Finish in the DayCasion app.', 'Go to Import & Export Memories › Add Past Memories › choose ', el('strong', { text: S.profile.name }),
+        ' › From your computer › Review & save. Then create a new memory or add the files to an existing saved memory.'));
   }
 
   function selectionBar() {
@@ -412,12 +427,18 @@
   }
 
   function skippedList(skipped, open) {
+    const list = (rows) => el('ul', { class: 'files' }, rows.slice(0, 200), rows.length > 200 ? el('li', { text: `…and ${rows.length - 200} more` }) : null);
+    const dups = skipped.filter((s) => s.reason === 'duplicate_in_selection');
+    const rest = skipped.filter((s) => s.reason !== 'duplicate_in_selection');
     const byReason = new Map();
-    for (const s of skipped) { const k = s.message || C.REASONS[s.reason] || s.reason; if (!byReason.has(k)) byReason.set(k, []); byReason.get(k).push(s.relativePath); }
-    return el('details', { open: open || null }, el('summary', { text: `${plural(skipped.length, 'file')} won't be imported` }),
+    for (const s of rest) { const k = s.message || C.REASONS[s.reason] || s.reason; if (!byReason.has(k)) byReason.set(k, []); byReason.get(k).push(s.relativePath); }
+    return el('details', { open: open || null }, el('summary', { text: C.skippedSummary(skipped) }),
+      dups.length ? el('div', {}, el('h3', { text: `Duplicates (${dups.length})` }),
+        el('p', { class: 'small muted', text: 'Each is the same file as one already in this import, so it\'s imported only once.' }),
+        list(dups.map((d) => el('li', { class: 'dup' }, el('span', { class: 'path', text: d.relativePath }),
+          el('span', { class: 'muted', text: `same as ${d.duplicateOf || (d.message || '').replace(/^Same file as /, '')}` }))))) : null,
       [...byReason].map(([why, paths]) => el('div', {}, el('h3', { text: `${why} (${paths.length})` }),
-        el('ul', { class: 'files' }, paths.slice(0, 200).map((p) => el('li', {}, el('span', { class: 'path', text: p }))),
-          paths.length > 200 ? el('li', { text: `…and ${paths.length - 200} more` }) : null))));
+        list(paths.map((p) => el('li', {}, el('span', { class: 'path', text: p })))))));
   }
 
   // ------------------------------------------------------------------ 6. upload
@@ -440,7 +461,7 @@
         const f = S.state.items[res.key];
         if (res.result === 'new' || (res.result === 'existing' && res.status === 'pending')) tasks.push({ f, res, state: 'queued', tries: 0, pct: 0 });
         else if (res.result === 'existing') tasks.push({ f, res, state: 'done', pct: 100 });
-        else S.skipped.push({ relativePath: f.relativePath, reason: res.reason, message: res.duplicate_of ? `${C.REASONS[res.reason] || res.reason} (${res.duplicate_of})` : C.REASONS[res.reason] });
+        else S.skipped.push({ relativePath: f.relativePath, reason: res.reason, kind: f.kind, message: res.duplicate_of ? `${C.REASONS[res.reason] || res.reason} (${res.duplicate_of})` : C.REASONS[res.reason] });
       }
     }
     runQueue(tasks, view);
@@ -627,8 +648,9 @@
     }
     show(card(el('h2', { text: 'Ready in the DayCasion app' }),
       el('p', { text: `${plural(r.data.ready, 'file')} in ${plural(nGroups, 'suggested memory', 'suggested memories')} are waiting in Add Past Memories for ${S.profile.name}.` }),
-      el('ol', {}, el('li', { text: 'Open DayCasion on your phone.' }), el('li', { text: `Go to ${S.profile.name} › Add Past Memories.` }),
-        el('li', { text: 'Review each suggested memory, add its story, and save it.' })),
+      el('ol', {}, el('li', { text: 'Open DayCasion on your phone.' }),
+        el('li', { text: `Go to Import & Export Memories › Add Past Memories › choose ${S.profile.name} › From your computer.` }),
+        el('li', { text: 'Tap Review & save on each suggested memory. Create a new memory, or add the files to an existing saved memory.' })),
       dropped ? el('p', { class: 'small muted', text: `${plural(dropped, 'file')} that didn't upload were left out. Your originals are still on this computer.` }) : null,
       S.skipped.length ? skippedList(S.skipped) : null,
       el('div', { class: 'actions' }, el('button', { onclick: viewProfiles, text: 'Import more' }))));
