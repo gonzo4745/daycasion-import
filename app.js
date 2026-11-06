@@ -289,7 +289,8 @@
       el('div', { class: 'row' }, el('h2', { text: `${plural(sum.groups, 'suggested memory', 'suggested memories')} for ${S.profile.name}` }),
         el('button', { class: 'link', onclick: () => { if (confirm('Start over? Your changes on this page will be lost.')) viewChoose(); }, text: 'Start over' })),
       el('p', { text: `${counts(sum.photos, sum.videos)} · ${C.formatBytes(sum.bytes)}` }),
-      el('p', { class: 'muted small', text: 'Each folder became a suggested memory, dated from your folder names (and photo dates when they agree). Rename them, fix dates, move photos between memories, merge, split or leave things out. Nothing becomes a memory until you save it in the DayCasion app.' }),
+      el('p', { class: 'muted small', text: 'Each folder became a suggested memory, dated from your folder names (and photo dates when they agree). Rename them, fix dates, move photos between them, combine, split or leave things out. Nothing becomes a memory until you save it in the DayCasion app.' }),
+      el('p', { class: 'muted small', text: 'Want to add these to a memory you already have? Import them here, then in the DayCasion app go to Add Past Memories, tap Review & save and choose “Add to an existing memory”.' }),
       over ? el('p', { class: 'err', text: `This is more than your remaining storage (${C.formatBytes(Math.max(0, left))}). Leave some photos out, or add storage in the app.` }) : null,
       S.skipped.length ? skippedList(S.skipped) : null,
       el('div', { class: 'actions' }, el('button', { id: 'upload', disabled: !sum.groups || over || null, onclick: confirmUpload,
@@ -330,9 +331,11 @@
     const bytes = included.reduce((n, k) => n + st.items[k].size, 0);
     const title = el('input', { class: 'title', value: g.title, maxlength: '200', 'aria-label': 'Memory title' });
     title.addEventListener('change', () => { S.state = C.edits.rename(S.state, g.key, title.value); });
-    const merge = el('select', { 'aria-label': 'Merge into another memory' }, el('option', { value: '', text: 'Merge into…' }),
-      st.groups.filter((x) => x.key !== g.key).map((x) => el('option', { value: x.key, text: x.title })));
-    merge.addEventListener('change', () => { if (merge.value) { S.state = C.edits.merge(S.state, [merge.value, g.key]); viewPreview(); } });
+    // Combines two suggested memories from this import (shown only when there is another one to combine with).
+    const others = st.groups.filter((x) => x.key !== g.key);
+    const merge = others.length ? el('select', { 'aria-label': 'Combine with another suggested memory from this import' },
+      el('option', { value: '', text: 'Combine with…' }), others.map((x) => el('option', { value: x.key, text: x.title }))) : null;
+    if (merge) merge.addEventListener('change', () => { if (merge.value) { S.state = C.edits.merge(S.state, [merge.value, g.key]); viewPreview(); } });
     const allOut = included.length === 0;
     const grid = el('div', { class: 'grid' });
     const shown = g.showAll ? g.items : g.items.slice(0, 30);
@@ -351,26 +354,38 @@
   }
 
   function dateEditor(g) {
+    // The fields shown follow what the member picked; the recorded date is only what has been fully entered.
+    const want = g.chosenPrecision || g.precision;
     const [y, m, d] = (g.date || '').split('-');
+    const hasMonth = ['day', 'month', 'approximate_month', 'approximate_day'].includes(g.precision);
+    const hasDay = ['day', 'approximate_day'].includes(g.precision);
     const prec = el('select', { 'aria-label': 'How precise is the date' },
       [['day', 'Exact date'], ['month', 'Month & year'], ['year', 'Year only'], ['approximate', 'Around a year'], ['unknown', 'Date unknown']]
-        .map(([v, t]) => el('option', { value: v, text: t, selected: g.precision === v || null })));
-    const year = el('input', { class: 'year', type: 'number', min: '1826', max: '2100', value: y || '', 'aria-label': 'Year', placeholder: 'Year' });
-    const month = el('select', { 'aria-label': 'Month' }, ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-      .map((name, i) => el('option', { value: String(i + 1).padStart(2, '0'), text: name, selected: +m === i + 1 || null })));
-    const day = el('input', { type: 'number', min: '1', max: '31', value: d ? +d : '', 'aria-label': 'Day', placeholder: 'Day' });
+        .map(([v, t]) => el('option', { value: v, text: t, selected: want === v || null })));
+    const year = el('input', { class: 'year', type: 'number', min: '1826', max: '2100', value: g.date ? y : '', 'aria-label': 'Year', placeholder: 'Year' });
+    const month = el('select', { 'aria-label': 'Month' }, el('option', { value: '', text: 'Month', selected: hasMonth ? null : true }),
+      ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        .map((name, i) => el('option', { value: String(i + 1).padStart(2, '0'), text: name, selected: (hasMonth && +m === i + 1) || null })));
+    const day = el('input', { type: 'number', min: '1', max: '31', value: hasDay ? +d : '', 'aria-label': 'Day', placeholder: 'Day' });
     const apply = () => {
-      const p = prec.value;
-      const date = p === 'unknown' ? null : p === 'day' ? `${year.value}-${month.value}-${String(day.value).padStart(2, '0')}` : p === 'month' ? `${year.value}-${month.value}` : `${year.value}`;
+      const p = prec.value, yv = String(year.value).trim(), mv = month.value, dv = String(day.value).trim();
+      let date = null;
+      if (p !== 'unknown' && yv) {
+        date = yv;
+        if ((p === 'month' || p === 'day') && mv) date += `-${mv}`;
+        if (p === 'day' && mv && dv) date += `-${dv.padStart(2, '0')}`;
+      }
       S.state = C.edits.setDate(S.state, g.key, date, p); viewPreview();
     };
     for (const x of [prec, year, month, day]) x.addEventListener('change', apply);
     const source = { folders: 'from your folder names', photos: 'from the photos', member: 'set by you' }[g.dateSource] || '';
+    const missing = want === g.precision ? '' : (!g.date ? 'Enter the year' : (want === 'day' && hasMonth) ? 'Enter the day' : (want === 'month' || want === 'day') ? 'Choose the month' : 'Enter the year');
     return el('div', { class: 'dates' }, prec,
-      g.precision === 'unknown' ? null : year,
-      ['day', 'month'].includes(g.precision) ? month : null,
-      g.precision === 'day' ? day : null,
-      el('span', { class: 'muted small', text: `${C.dateLabel(g.date, g.precision)}${source ? ' · ' + source : ''}` }));
+      want === 'unknown' ? null : year,
+      ['day', 'month'].includes(want) ? month : null,
+      want === 'day' ? day : null,
+      el('span', { class: 'muted small', text: `${C.dateLabel(g.date, g.precision)}${source ? ' · ' + source : ''}` }),
+      missing ? el('span', { class: 'small hint', text: `${missing} to finish this date.` }) : null);
   }
 
   function tile(f) {

@@ -447,7 +447,12 @@
     },
     setDate(state, gk, date, precision) {
       const s = clone(state); const g = s.groups.find((x) => x.key === gk);
-      if (g) { const d = normalizeDate(date, precision); g.date = d.date; g.precision = d.precision; g.dateSource = 'member'; }
+      if (g) {
+        const d = normalizeDate(date, precision); g.date = d.date; g.precision = d.precision; g.dateSource = 'member';
+        // What the member picked stays picked while the date is incomplete (e.g. "Month & year" before a month is
+        // chosen); only the complete part is recorded, so nothing is invented.
+        if (d.precision !== precision) g.chosenPrecision = precision; else delete g.chosenPrecision;
+      }
       return s;
     },
     moveItems(state, itemKeys, toGk) {
