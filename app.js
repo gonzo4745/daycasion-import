@@ -848,7 +848,11 @@
     const settle = (j) => {
       if (!saves || j.state === 'done' || j.state === 'saving') return;
       if (j.items.some((t) => t.state === 'queued' || t.state === 'uploading')) return;
-      if (j.items.some((t) => t.state === 'failed')) { j.state = 'failed'; j.error = `${plural(j.items.filter((t) => t.state === 'failed').length, 'file')} didn't upload`; return; }
+      if (j.items.some((t) => t.state === 'failed')) {
+        const bad = j.items.filter((t) => t.state === 'failed');
+        const why = [...new Set(bad.map((t) => t.error).filter(Boolean))];
+        j.state = 'failed'; j.error = `${plural(bad.length, 'file')} didn't upload${why.length === 1 ? `: ${why[0]}` : ''}`; return;
+      }
       j.state = 'saving'; paint();
       R.saving = R.saving.then(() => saveJob(R, j)).then(paint);
     };
@@ -1010,7 +1014,12 @@
           const body = xhr.responseText || '';
           if (xhr.status === 409 || /Duplicate|already exists/i.test(body)) return resolve();
           if ((xhr.status === 401 || /jwt|token/i.test(body) && xhr.status === 400) && !retried && await refresh()) return go(true);
-          reject(Object.assign(new Error('upload'), { userMessage: xhr.status === 413 ? 'Too large to upload' : `Upload failed (${xhr.status})`, permanent: xhr.status === 413 || xhr.status === 415 }));
+          // Storage answers a size refusal as HTTP 400 with statusCode "413" (e.g. the project's upload size setting):
+          // it is explained, and not repeated automatically (Try again repeats it once the setting allows it).
+          let info = {}; try { info = JSON.parse(body) || {}; } catch (e) { /* not JSON */ }
+          const tooBig = xhr.status === 413 || String(info.statusCode) === '413' || /maximum allowed size|payload too large/i.test(body);
+          reject(Object.assign(new Error('upload'), { userMessage: tooBig ? 'too large for DayCasion\'s storage right now' : `Upload failed (${xhr.status})`,
+            permanent: tooBig || xhr.status === 415 }));
         };
         xhr.onerror = () => reject(Object.assign(new Error('network'), { userMessage: 'Connection lost' }));
         xhr.send(blob);
