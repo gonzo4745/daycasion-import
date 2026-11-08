@@ -797,6 +797,10 @@
   }
 
   function runQueue(R) {
+    // One run at a time: a second start (e.g. Try again clicked twice) would see nothing left to upload and finish the
+    // import, with a short summary, while the first run was still saving memories.
+    if (R.running) return;
+    R.running = true;
     const { view, jobs, tasks } = R;
     const saves = S.mode !== 'later';
     const rows = new Map();
@@ -877,6 +881,7 @@
     paintNow();
     for (const j of jobs) if (j.state === 'failed' || j.state === 'waiting') { j.state = 'waiting'; j.error = null; settle(j); } // already uploaded (a retry or a resumed import)
     Promise.all(Array.from({ length: UPLOADS_AT_ONCE }, worker)).then(() => R.saving).then(async () => {
+      R.running = false;
       paintNow();
       if (R.stopped) return;
       const failedFiles = tasks.filter((t) => t.state === 'failed');
@@ -897,6 +902,9 @@
   }
 
   function retry(R) {
+    if (R.running) return;
+    // From the "didn't finish" screen: show the progress screen again, so the member sees the retry working.
+    if (!document.body.contains(R.view.head)) R.view = runView();
     for (const t of R.tasks) if (t.state === 'failed') { t.state = 'queued'; t.tries = 0; t.error = null; }
     for (const j of R.jobs) if (j.state === 'failed') { j.state = 'waiting'; j.error = null; }
     window.addEventListener('beforeunload', R.view.leave);
@@ -1095,7 +1103,21 @@
       S.skipped.length ? skippedList(S.skipped) : null));
   }
 
+  /** What this import actually saved, from DayCasion: every file in a memory (this visit, an earlier try or a
+   *  Continue it), by kind, and the proposed memories they are in. Null when it can't be read. */
+  async function savedFromServer(batchId) {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const r = await authed(`/rest/v1/import_items?select=kind,group_id&batch_id=eq.${batchId}&status=eq.organized&order=id`, { headers: { Range: `${from}-${from + 999}` } }).catch(() => null);
+      if (!r || !r.ok || !Array.isArray(r.data)) return null;
+      rows.push(...r.data); if (r.data.length < 1000) break;
+    }
+    const photos = rows.filter((x) => x.kind === 'photo').length;
+    return { photos, videos: rows.length - photos, files: rows.length, groups: new Set(rows.map((x) => x.group_id)) };
+  }
+
   async function finishRun(R) {
+    if (R.running) return; // still saving: the summary comes when everything is done
     const r = await rpc('dc_import_finish', { p_batch_id: S.batch });
     window.removeEventListener('beforeunload', R.view.leave);
     if (!r.ok) {
@@ -1105,15 +1127,18 @@
     }
     forgetRun(S.batch);
     const added = R.tasks.filter((t) => t.state === 'added');
-    const photos = added.filter((t) => t.kind === 'photo').length;
+    // The totals are what DayCasion holds for this import (falls back to this page's own record).
+    const saved = await savedFromServer(S.batch) || { photos: added.filter((t) => t.kind === 'photo').length,
+      videos: added.filter((t) => t.kind === 'video').length, files: added.length, groups: new Set(added.map((t) => t.job.id)) };
+    const photos = saved.photos;
     const again = el('div', { class: 'actions' },
       el('button', { onclick: () => { clearSelection(); viewMode(); }, text: `Import more for ${S.profile.name}` }),
       el('button', { class: 'secondary', onclick: viewProfiles, text: 'Choose another profile' }));
     if (S.mode === 'create') {
-      const made = R.jobs.filter((j) => j.state === 'done');
+      const made = R.jobs.filter((j) => saved.groups.has(j.id) || j.state === 'done');
       if (!made.length) return nothingNew(again);
       return show(card(el('h2', { class: 'done', text: `${memoriesWord(made.length)} Created in DayCasion` }),
-        el('p', { class: 'lead', text: `${plural(made.length, 'memory', 'memories')} with ${countsAnd(photos, added.length - photos)} ${made.length === 1 ? 'is' : 'are'} saved for ${S.profile.name}.` }),
+        el('p', { class: 'lead', text: `${plural(made.length, 'memory', 'memories')} with ${countsAnd(photos, saved.videos)} ${made.length === 1 ? 'is' : 'are'} saved for ${S.profile.name}.` }),
         el('div', { class: 'note' }, el('strong', { text: 'There\'s nothing more to do.' }),
           el('p', { text: `${made.length === 1 ? 'It\'s' : 'They\'re'} already saved. Open DayCasion and go to ${S.profile.name}'s Life Timeline to see ${made.length === 1 ? 'it' : 'them'}. You can edit a title, date or story there whenever you like.` })),
         el('details', {}, el('summary', { text: `The ${plural(made.length, 'memory', 'memories')} created` }),
@@ -1122,10 +1147,10 @@
         S.skipped.length ? skippedList(S.skipped) : null, again));
     }
     if (S.mode === 'existing') {
-      if (!added.length) return nothingNew(again);
+      if (!saved.files) return nothingNew(again);
       const title = R.memoryTitle || (S.target && S.target.title) || 'your memory';
-      return show(card(el('h2', { class: 'done', text: `${filesWord(added.length)} Added to ${quoted(title)}` }),
-        el('p', { class: 'lead', text: `${countsAnd(photos, added.length - photos)} ${added.length === 1 ? 'was' : 'were'} added to ${quoted(title)}${S.target && S.target.date !== undefined ? ` (${C.dateLabel(S.target.date, S.target.precision)})` : ''} for ${S.profile.name}.` }),
+      return show(card(el('h2', { class: 'done', text: `${filesWord(saved.files)} Added to ${quoted(title)}` }),
+        el('p', { class: 'lead', text: `${countsAnd(photos, saved.videos)} ${saved.files === 1 ? 'was' : 'were'} added to ${quoted(title)}${S.target && S.target.date !== undefined ? ` (${C.dateLabel(S.target.date, S.target.precision)})` : ''} for ${S.profile.name}.` }),
         el('div', { class: 'note' }, el('p', { text: 'Its title, date and story didn\'t change. Open the memory in DayCasion to see them.' })),
         S.skipped.length ? skippedList(S.skipped) : null, again));
     }
