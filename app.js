@@ -82,8 +82,20 @@
     profiles: [], profile: null, plan: null, storage: null,
     files: [], skipped: [], state: null, selected: new Set(), batch: null, resume: null,
     thumbs: new Map(), queue: null, active: new Set(), // uploads in flight (aborted on cancel)
+    scan: 0, // which selection of folders is on screen: file keys are unique to it
   };
   const fileByKey = new Map(); // key -> File
+
+  /** Forgets the current selection of folders (files, suggested memories, selection, skipped list, previews) before a
+   * new one: Start over, Import more, another profile, other folders, and every new scan. Nothing that was uploaded is
+   * touched. Previews still being made for the old selection are discarded when they finish (see tile). */
+  function clearSelection() {
+    S.scan++;
+    for (const url of S.thumbs.values()) URL.revokeObjectURL(url);
+    S.thumbs = new Map();
+    fileByKey.clear();
+    S.files = []; S.skipped = []; S.state = null; S.selected = new Set(); S.batch = null;
+  }
 
   // ------------------------------------------------------------------ 1. sign in
   function viewSignIn(message) {
@@ -154,7 +166,7 @@
     return el('p', { class: 'small muted', text: `${C.formatBytes(left)} of storage left on your plan.` });
   }
 
-  function startProfile(p) { S.profile = p; S.resume = null; viewChoose(); }
+  function startProfile(p) { clearSelection(); S.profile = p; S.resume = null; viewChoose(); }
 
   // ------------------------------------------------------------------ 3. choose folders or files
   function viewChoose() {
@@ -211,6 +223,8 @@
     const bar = el('div', {});
     show(card(el('h2', { text: 'Reading your photos and videos' }), status, el('div', { class: 'progress' }, bar),
       el('p', { class: 'small muted', text: 'This happens on your computer. Nothing is uploaded yet.' })));
+    clearSelection(); // a new selection never reuses the previous one's files, keys or previews
+    const scanId = S.scan;
     const valid = []; const skipped = []; let done = 0; let keyN = 0;
     const work = list.filter((x) => { const c = C.classify(x.relativePath, x.file.size); if (c.ignore) return false;
       if (c.skip) { skipped.push({ relativePath: x.relativePath, reason: c.reason, message: c.message }); return false; } x.cls = c; return true; });
@@ -222,7 +236,7 @@
         const buf = await x.file.arrayBuffer();
         const meta = C.readMetadata(x.cls.kind, x.cls.mime, buf);
         const hash = await C.sha256Hex(buf);
-        const f = { key: `f${++keyN}`, relativePath: x.relativePath, folderPath: C.dirName(x.relativePath), kind: x.cls.kind, mime: x.cls.mime,
+        const f = { key: `s${scanId}f${++keyN}`, relativePath: x.relativePath, folderPath: C.dirName(x.relativePath), kind: x.cls.kind, mime: x.cls.mime,
           size: x.file.size, hash, capture: meta.capture, width: meta.width, height: meta.height, durationSeconds: meta.durationSeconds,
           extra: meta.extra, lastModified: x.file.lastModified };
         if (f.kind === 'video') {
@@ -257,7 +271,7 @@
     S.state = C.makeState(kept);
     if (!kept.length) {
       return show(card(el('h2', { text: 'No photos or videos to import' }), skippedList(skipped, true),
-        el('div', { class: 'actions' }, el('button', { onclick: viewChoose, text: 'Choose other folders' }))));
+        el('div', { class: 'actions' }, el('button', { onclick: () => { clearSelection(); viewChoose(); }, text: 'Choose other folders' }))));
     }
     viewPreview();
   }
@@ -288,7 +302,7 @@
     const over = left != null && S.storage.enforced && sum.bytes > left;
     const top = card(
       el('div', { class: 'row' }, el('h2', { text: `${plural(sum.groups, 'suggested memory', 'suggested memories')} for ${S.profile.name}` }),
-        el('button', { class: 'link', onclick: () => { if (confirm('Start over? Your changes on this page will be lost.')) viewChoose(); }, text: 'Start over' })),
+        el('button', { class: 'link', onclick: () => { if (confirm('Start over? Your changes on this page will be lost.')) { clearSelection(); viewChoose(); } }, text: 'Start over' })),
       el('p', { text: `${counts(sum.photos, sum.videos)} · ${C.formatBytes(sum.bytes)}` }),
       guide(),
       over ? el('p', { class: 'err', text: `This is more than your remaining storage (${C.formatBytes(Math.max(0, left))}). Leave some photos out, or add storage in the app.` }) : null,
@@ -417,7 +431,12 @@
     } else if (f.kind === 'video' && f.canPoster) {
       const img = el('img', { alt: '' }); t.append(img);
       const cached = S.thumbs.get(f.key);
-      if (cached) img.src = cached; else posterBlob(file, 240).then((b) => { if (b) { const u = URL.createObjectURL(b); S.thumbs.set(f.key, u); img.src = u; } });
+      const scanId = S.scan;
+      if (cached) img.src = cached;
+      else posterBlob(file, 240).then((b) => {
+        if (!b || scanId !== S.scan) return; // finished after Start over / a new selection: not for this screen
+        const u = URL.createObjectURL(b); S.thumbs.set(f.key, u); img.src = u;
+      });
     } else {
       t.append(el('span', { class: 'placeholder', text: f.kind === 'video' ? 'Video' : C.baseName(f.relativePath) }));
     }
