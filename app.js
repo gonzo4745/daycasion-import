@@ -30,6 +30,25 @@
     return e;
   }
   const show = (...nodes) => { $app.replaceChildren(...nodes); window.scrollTo(0, 0); };
+  /** Redraws the same screen after an edit without moving the page: the memory being edited stays where it was on
+   * screen (and its control keeps focus); otherwise the scroll position is kept. */
+  function redrawInPlace(...nodes) {
+    const active = document.activeElement;
+    const section = active && active.closest ? active.closest('section.group') : null;
+    const key = section && section.getAttribute('data-group');
+    const top = section ? section.getBoundingClientRect().top : null;
+    const label = active && active.getAttribute ? active.getAttribute('aria-label') : null;
+    const y = window.scrollY;
+    $app.replaceChildren(...nodes);
+    const again = key ? [...$app.querySelectorAll('section.group')].find((x) => x.getAttribute('data-group') === key) : null;
+    if (again) {
+      window.scrollTo(0, window.scrollY + again.getBoundingClientRect().top - top);
+      const control = label ? [...again.querySelectorAll('[aria-label]')].find((x) => x.getAttribute('aria-label') === label) : null;
+      if (control) control.focus({ preventScroll: true });
+    } else {
+      window.scrollTo(0, y);
+    }
+  }
   const card = (...kids) => el('div', { class: 'card' }, ...kids);
   const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : (many || one + 's')}`;
   const counts = (photos, videos) => [photos ? plural(photos, 'photo') : null, videos ? plural(videos, 'video') : null].filter(Boolean).join(' · ') || 'Nothing';
@@ -273,7 +292,7 @@
       return show(card(el('h2', { text: 'No photos or videos to import' }), skippedList(skipped, true),
         el('div', { class: 'actions' }, el('button', { onclick: () => { clearSelection(); viewChoose(); }, text: 'Choose other folders' }))));
     }
-    viewPreview();
+    viewPreview(true);
   }
 
   function probeImage(file) {
@@ -295,7 +314,8 @@
   }
 
   // ------------------------------------------------------------------ 5. review and edit the suggested memories
-  function viewPreview() {
+  /** [fresh]: first time this screen is shown (top of the page). Edits redraw it in place. */
+  function viewPreview(fresh) {
     const st = S.state;
     const sum = C.summary(st);
     const left = S.storage && S.storage.allowance_bytes ? S.storage.allowance_bytes - S.storage.used_bytes : null;
@@ -313,7 +333,7 @@
       el('strong', { text: 'Each group below is a proposed new memory' }),
       el('p', { text: 'It isn\'t one of your saved memories yet. Edit its title and date here. When you finish in the app, you can save it as a new memory, or add its files to a memory you\'ve already saved. That memory\'s title, date and story stay as they are.' }));
     const groups = st.groups.map(groupCard);
-    show(selectionBar(), top, about, ...groups);
+    (fresh ? show : redrawInPlace)(selectionBar(), top, about, ...groups);
   }
 
   /** Page 2: the whole journey in four short steps. */
