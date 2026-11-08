@@ -16,6 +16,7 @@
   // Videos: up to 100 MB (the server's max_video_bytes), any length. The length must still be readable.
   const MAX_READABLE_SECONDS = 999999; // longer than this is not a believable length (and doesn't fit duration_seconds)
   const MAX_FILES = 10000; // per import (dc_import_add_items)
+  const MAX_DESCRIPTION = 10000; // a memory's description (story), as typed on the review screen
   const DISPLAY_WIDTH = 1024; // display copy, as the app makes (_dcMakeDisplayCopy)
 
   const TYPES = {
@@ -473,6 +474,11 @@
   }
 
   const edits = {
+    /** The member's own description (story) for a proposed memory; blank unless they write one. */
+    describe(state, gk, text) {
+      const s = clone(state); const g = s.groups.find((x) => x.key === gk);
+      if (g) g.description = String(text || '').slice(0, MAX_DESCRIPTION); return s;
+    },
     rename(state, gk, title) {
       const s = clone(state); const g = s.groups.find((x) => x.key === gk);
       const t = String(title || '').trim().slice(0, 200); if (g && t) g.title = t; return s;
@@ -501,7 +507,10 @@
       const s = clone(state); const [first, ...rest] = gks.map((k) => s.groups.find((g) => g.key === k)).filter(Boolean);
       if (!first) return state;
       for (const g of rest) { for (const k of g.items) if (!first.items.includes(k)) first.items.push(k);
-        for (const f of g.folders) if (!first.folders.includes(f)) first.folders.push(f); g.items = []; }
+        for (const f of g.folders) if (!first.folders.includes(f)) first.folders.push(f); g.items = [];
+        // Combining keeps both descriptions (one after the other).
+        const texts = [first.description, g.description].map((t) => String(t || '').trim()).filter(Boolean);
+        if (texts.length) first.description = texts.join('\n\n').slice(0, MAX_DESCRIPTION); }
       return tidy(s);
     },
     split(state, gk, itemKeys, title) {
@@ -509,7 +518,7 @@
       const keys = new Set(itemKeys); const moving = g.items.filter((k) => keys.has(k));
       if (!moving.length || moving.length === g.items.length) return state;
       g.items = g.items.filter((k) => !keys.has(k));
-      const ng = { ...g, key: nextKey(s), title: String(title || `${g.title} (2)`).slice(0, 200), items: moving, folders: [...g.folders], origin: 'split' };
+      const ng = { ...g, key: nextKey(s), title: String(title || `${g.title} (2)`).slice(0, 200), items: moving, folders: [...g.folders], origin: 'split', description: '' }; // the description stays with the original
       s.groups.splice(s.groups.indexOf(g) + 1, 0, ng);
       return tidy(s);
     },
@@ -588,7 +597,7 @@
     return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
 
-  return { MAX_BYTES, LIMITS, setLimits, MAX_READABLE_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
+  return { MAX_DESCRIPTION, MAX_BYTES, LIMITS, setLimits, MAX_READABLE_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
     checkVideoLength, readJpegExif, readEmbeddedExif, readMp4, readMetadata, exifCapture, suggestGroups, groupDate,
     markDuplicates, makeState, edits, normalizeDate, toPayload, summary, dateLabel, formatBytes, sha256Hex, baseName, dirName };
 });

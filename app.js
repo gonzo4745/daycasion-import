@@ -454,7 +454,7 @@
     const top = card(
       el('div', { class: 'row' }, el('h2', { text: `Review ${plural(sum.groups, 'new memory', 'new memories')} for ${S.profile.name}` }), startOver()),
       crumbs(),
-      el('p', { class: 'lead', text: 'Each group below becomes one saved memory in DayCasion, with its own title, date, photos and videos. Check them, change anything you like, then create them all at once. Nothing is uploaded until you do.' }),
+      el('p', { class: 'lead', text: 'Each group below becomes one saved memory in DayCasion, with its own title, date, photos and videos. Check them, change anything you like, add a description if you wish, then create them all at once. Nothing is uploaded until you do.' }),
       el('ul', { class: 'tips small muted' },
         el('li', { text: 'Everything is included. To leave a photo or video out, choose Remove on it.' }),
         el('li', { text: 'To move photos between memories or split one in two, choose Organize photos on that memory.' })),
@@ -491,6 +491,7 @@
         el('span', { class: 'muted small', text: allOut ? 'Won\'t be created' : `${counts(photos, included.length - photos)} · ${C.formatBytes(bytes)}` })),
       el('div', { class: 'group-head' }, title),
       dateEditor(g),
+      descriptionBox(g),
       el('p', { class: 'folders', text: `From ${g.folders.map((f) => f || 'the files you chose').join(', ')}` }),
       allOut ? el('div', { class: 'note small' }, 'This memory won\'t be created. ',
         el('button', { class: 'link', onclick: () => { S.state = C.edits.excludeGroup(S.state, g.key, false); redraw(); }, text: 'Create it after all' })) : null,
@@ -500,6 +501,16 @@
       allOut ? null : el('div', { class: 'group-actions' },
         organizing ? null : el('button', { class: 'small secondary', 'aria-expanded': 'false', onclick: () => { S.organizing = g.key; S.selected = new Set(); redraw(); }, text: 'Organize photos' }),
         el('button', { class: 'link', onclick: () => { S.state = C.edits.excludeGroup(S.state, g.key, true); if (S.organizing === g.key) S.organizing = null; redraw(); }, text: 'Don\'t create this memory' })));
+  }
+
+  /** Optional description (the memory's story), saved with the memory. Kept in the review state as it is typed (no
+   *  redraw, so the cursor stays put); every later redraw shows it again. Blank unless the member writes one. */
+  function descriptionBox(g) {
+    const box = el('textarea', { class: 'description', rows: '3', maxlength: String(C.MAX_DESCRIPTION), 'aria-label': 'Memory description',
+      placeholder: 'Description (optional): what happened, who was there, what you want to remember' });
+    box.value = g.description || '';
+    box.addEventListener('input', () => { S.state = C.edits.describe(S.state, g.key, box.value); });
+    return box;
   }
 
   /** Optional tools for one proposed memory: select photos, then move them to another proposed memory or make them a
@@ -705,7 +716,8 @@
     const started = await rpc('dc_import_start', { p_profile_id: S.profile.id, p_source_name: topFolders() });
     if (!started.ok) return view.fail(errText(started, "We couldn't start the import. Please try again."));
     S.batch = started.data.batch_id;
-    rememberRun(S.batch, { mode: S.mode, memoryId: S.target ? S.target.id : null, title: S.target ? S.target.title : null });
+    rememberRun(S.batch, { mode: S.mode, memoryId: S.target ? S.target.id : null, title: S.target ? S.target.title : null,
+      descriptions: S.mode === 'create' ? descriptionsOf(S.state) : undefined });
     for (const call of C.toPayload(S.state)) {
       const r = await rpc('dc_import_add_items', { p_batch_id: S.batch, p_groups: call });
       if (!r.ok) return view.fail(errText(r, "We couldn't prepare the upload. Please try again."), true);
@@ -717,6 +729,13 @@
       }
     }
     runBatch(view, S.files);
+  }
+
+  /** The descriptions written on the review screen, by proposed memory (only the ones filled in). */
+  function descriptionsOf(state) {
+    const out = {};
+    for (const g of (state && state.groups) || []) { const d = String(g.description || '').trim(); if (d) out[g.key] = d; }
+    return out;
   }
 
   function startResume(batch, profile) {
@@ -777,7 +796,9 @@
     const data = await loadBatch(S.batch).catch(() => null);
     if (!data) return view.fail("We couldn't load this import. Please try again.", true);
     const byPath = new Map(files.map((f) => [f.relativePath, f]));
-    const jobs = data.groups.map((g) => ({ id: g.id, key: g.client_key, title: g.title, date: g.occurred_on, precision: g.date_precision,
+    // Descriptions: from this visit's review screen, or remembered for Continue it (this browser).
+    const descriptions = S.mode === 'create' ? (S.state ? descriptionsOf(S.state) : ((runs()[S.batch] || {}).descriptions || {})) : {};
+    const jobs = data.groups.map((g) => ({ id: g.id, key: g.client_key, title: g.title, description: descriptions[g.client_key] || '', date: g.occurred_on, precision: g.date_precision,
       memoryId: g.memory_id, target: g.target, items: [], state: g.status === 'saved' ? 'done' : 'waiting', error: null }));
     const jobOf = new Map(jobs.map((j) => [j.id, j]));
     const tasks = [];
@@ -940,7 +961,7 @@
           memoryId = g.ok && g.data && g.data[0] ? g.data[0].memory_id : null;
         }
         if (!memoryId) {
-          const r = await rpc('dc_import_begin_save', { p_group_id: j.id, p_title: j.title, p_body: '', p_occurred_on: j.precision === 'unknown' ? null : j.date,
+          const r = await rpc('dc_import_begin_save', { p_group_id: j.id, p_title: j.title, p_body: j.description || '', p_occurred_on: j.precision === 'unknown' ? null : j.date,
             p_date_precision: j.precision, p_item_ids: kept.map((t) => t.id) });
           if (!r.ok) throw Object.assign(new Error('begin'), { userMessage: plainErr(r, "We couldn't create this memory. Please try again.") });
           memoryId = r.data.memory_id;
