@@ -9,14 +9,14 @@
 
   // ---------------------------------------------------------------- limits (same as the DayCasion app and server)
   const MAX_BYTES = 52428800; // photos: 50 MB
-  // Videos: the server's limit (app_config max_video_bytes, 200 MB). 50 MB until the page has read it.
+  // Videos: the server's limit (app_config max_video_bytes, currently 300 MB). 50 MB until the page has read it.
   const LIMITS = { videoBytes: 52428800 };
   const mb = (b) => `${Math.round(b / 1048576)} MB`;
   function setLimits(l) {
     if (l && l.videoBytes >= MAX_BYTES) LIMITS.videoBytes = l.videoBytes;
     REASONS.file_too_large = `Photos can be up to 50 MB and videos up to ${mb(LIMITS.videoBytes)}`; // the server's refusal, in its current terms
   }
-  // Videos: up to the server's max_video_bytes (200 MB), any length. The length must still be readable.
+  // Videos: up to the server's max_video_bytes (currently 300 MB), any length. The length must still be readable.
   const MAX_READABLE_SECONDS = 999999; // longer than this is not a believable length (and doesn't fit duration_seconds)
   const MAX_FILES = 10000; // per import (dc_import_add_items)
   const MAX_DESCRIPTION = 10000; // a memory's description (story), as typed on the review screen
