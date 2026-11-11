@@ -311,6 +311,8 @@
     const parts = [heading('Personal Video Eulogy', viewHome, 'Back to My Eulogy'), ...statusNotes(), noteOf(message)];
     if (v) {
       const player = h('video', { controls: '', preload: 'metadata', playsinline: '', id: 'eu-video-player', 'aria-label': 'Your video eulogy' });
+      player.addEventListener('error', () => { if (player.getAttribute('src')) { player.replaceWith(h('p', { class: 'small muted', id: 'eu-video-cant-play',
+        text: 'This browser can\'t play this video format here (MOV files play best in Safari). It is saved as uploaded, and your executor can download it.' })); } });
       signedVideoUrl(v.storage_path).then((u) => { if (u) player.src = u; });
       parts.push(h('div', { class: 'note target', id: 'eu-video-current' }, h('strong', { text: v.file_name }),
         h('span', { class: 'small muted', id: 'eu-video-facts', text: `${clock(v.duration_seconds)} long · ${fmtBytes(v.size_bytes)} · uploaded ${fmtDate(v.ready_at)}` }),
