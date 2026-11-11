@@ -350,9 +350,12 @@
     const size = file ? file.size : 0;
     const after = total - usedB + current - size;
     const pct = (x) => `${Math.max(0, Math.min(100, total ? (x / total) * 100 : 0)).toFixed(2)}%`;
+    // Widths are set through the style property (the page's security policy blocks inline style attributes).
+    const usedBar = h('span', { class: 'used' }); usedBar.style.width = pct(usedB - current);
+    const videoBar = file ? h('span', { class: after < 0 ? 'video over' : 'video' }) : null;
+    if (videoBar) videoBar.style.width = after < 0 ? pct(Math.max(total - usedB + current, 0)) : pct(size);
     const bar = h('div', { class: 'storage-bar', role: 'img', 'aria-label': `Storage: ${fmtBytes(usedB)} of ${fmtBytes(total)} used` + (file ? `, plus this video ${fmtBytes(size)}` : '') },
-      h('span', { class: 'used', style: `width:${pct(usedB - current)}` }),
-      file ? h('span', { class: after < 0 ? 'video over' : 'video', style: `width:${pct(Math.min(size, Math.max(total - usedB + current, 0)) || 0)}` }) : null);
+      usedBar, videoBar);
     const row = (k, v, cls) => h('div', { class: 'srow' + (cls ? ' ' + cls : '') }, h('span', { text: k }), h('strong', { text: v }));
     const rows = [row('Plan', st.plan || (total ? 'Storage add-on' : 'No plan')), row('Total storage', fmtBytes(total)), row('Currently used', fmtBytes(usedB)),
       row('Available before upload', fmtBytes(avail))];
