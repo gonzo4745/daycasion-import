@@ -69,7 +69,7 @@
           note: 'This is the eulogy permission you turned on in the DayCasion app. You haven\'t chosen an option on this page. ' +
             'To give DayCasion your own eulogy information, or to have your executor receive a eulogy you wrote yourself (no AI), choose an option below.' };
       }
-      return { line: `${P}${OPTION.ai}.`,
+      return { line: `${P}My Eulogy Information.`,
         note: (from ? `DayCasion will write your eulogy with AI from ${from}.` : 'DayCasion will write your eulogy with AI.') +
           (info.ai_information && !infos.length ? ' You haven\'t uploaded any information files yet.' : '') };
     }
