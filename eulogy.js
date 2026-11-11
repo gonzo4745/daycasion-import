@@ -50,26 +50,58 @@
     return out;
   }
 
+  /** What the executor would receive today, in plain words, and where that setting came from. */
+  function currentChoice(completed, infos) {
+    const P = 'Your choice for your executor: ';
+    if (info.option === 'completed') {
+      return { line: `${P}${OPTION.completed}.`,
+        note: completed ? 'Your executor receives your eulogy exactly as you wrote it. It is never sent to AI.'
+          : 'You haven\'t uploaded your completed eulogy yet. Until you do, there is no eulogy for your executor.' };
+    }
+    if (info.option === 'ai') {
+      const src = [];
+      if (info.ai_information) src.push('your information files');
+      if (info.ai_memories) src.push('your memory descriptions');
+      if (info.ai_life_story) src.push('your Life Story');
+      const from = src.length ? src.length === 1 ? src[0] : `${src.slice(0, -1).join(', ')} and ${src[src.length - 1]}` : null;
+      if (info.legacy_setting) {
+        return { line: `${P}an AI-assisted eulogy${from ? ` written from ${from}` : ''}.`,
+          note: 'This is the eulogy permission you turned on in the DayCasion app. You haven\'t chosen an option on this page. ' +
+            'To give DayCasion your own eulogy information, or to have your executor receive a eulogy you wrote yourself (no AI), choose an option below.' };
+      }
+      return { line: `${P}${OPTION.ai}.`,
+        note: (from ? `DayCasion will write your eulogy with AI from ${from}.` : 'DayCasion will write your eulogy with AI.') +
+          (info.ai_information && !infos.length ? ' You haven\'t uploaded any information files yet.' : '') };
+    }
+    return { line: `${P}No eulogy`, note: 'Choose an option below to prepare one.' };
+  }
+
   // ------------------------------------------------------------------ home: the two options
   async function viewHome() {
     X.show(X.card(h('p', { class: 'muted', text: 'Loading My Eulogy…' })));
     try { await load(); } catch (e) { if (e.message !== 'signed-out') X.show(errorCard(e.userMessage || 'Please reload the page.')); return; }
     const completed = docs('completed')[0];
     const infos = docs('information');
-    const selected = OPTION[info.option] || OPTION.none;
-    const option = (id, icon, title, text, status, onclick) => h('button', { class: 'choice', id, onclick },
-      h('span', { class: 'choice-icon', 'aria-hidden': 'true', text: icon }), h('strong', { text: title }),
+    const current = currentChoice(completed, infos);
+    // The card for the current choice is marked. An AI setting made earlier in the app (memories and Life Story, no
+    // uploads) is not this page's information option, so neither card is marked for it.
+    const marked = info.legacy_setting ? null : info.option;
+    const option = (id, key, icon, title, text, status, onclick) => h('button', { class: 'choice' + (marked === key ? ' selected' : ''), id, onclick,
+      'aria-pressed': String(marked === key) },
+      h('span', { class: 'choice-icon', 'aria-hidden': 'true', text: icon }),
+      marked === key ? h('span', { class: 'choice-badge', text: 'Selected' }) : null, h('strong', { text: title }),
       h('span', { class: 'choice-text', text }), h('span', { class: 'choice-hint', text: status }));
     X.show(X.card(heading('Import My Eulogy', X.back),
       h('p', { class: 'muted small', text: (info.my_life_profile ? `For ${info.my_life_profile.name}. ` : '') +
         'Your eulogy is private. Only your Legacy Executor receives the final eulogy, through DayCasion\'s secure Legacy process.' }),
-      h('p', { id: 'eu-selected', text: `Your choice for your executor: ${selected}` + (info.option === 'none' ? '' : '.') }),
+      h('p', { id: 'eu-selected', text: current.line }),
+      current.note ? h('p', { class: 'small muted', id: 'eu-selected-note', text: current.note }) : null,
       ...statusNotes(),
       h('div', { class: 'choices' },
-        option('eu-completed', '✓', OPTION.completed,
+        option('eu-completed', 'completed', '✓', OPTION.completed,
           'Upload your finished eulogy. It is kept exactly as you wrote it and never sent to AI. Your executor receives it with a copy of your original document.',
           completed ? `Uploaded: ${completed.file_name}` : 'Nothing uploaded yet', () => viewCompleted()),
-        option('eu-information', '✎', OPTION.ai,
+        option('eu-information', 'ai', '✎', OPTION.ai,
           'Download the Eulogy Preparation Guide, answer any questions you like, and upload it or your own notes. DayCasion writes your eulogy with AI. Your executor receives only the finished eulogy.',
           infos.length ? `${infos.length} information ${infos.length === 1 ? 'file' : 'files'} uploaded` : 'Nothing uploaded yet', () => viewInformation())),
       h('p', { class: 'small muted', text: 'You can upload, review, replace or delete your files here at any time until your legacy process begins.' })));
