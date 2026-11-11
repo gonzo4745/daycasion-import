@@ -161,3 +161,15 @@ h2.done { font-size: 24px; }
 @media (max-width: 600px) { .actionbar { padding: 12px; } .actionbar #upload { width: 100%; } }
 textarea.description { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; font: 16px/1.5 "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); resize: vertical; min-height: 4.5em; }
+/* Import My Eulogy */
+.eu-text { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; max-height: 420px; overflow: auto; font-size: 15px; line-height: 1.6; }
+ul.eu-files { list-style: none; padding: 0; margin: 8px 0; }
+ul.eu-files li { padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+ul.eu-files li .actions { margin-top: 6px; }
+label.check { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; font-size: 15px; }
+label.check input { margin-top: 4px; }
+progress { width: 100%; height: 10px; accent-color: var(--accent); }
+a.btn { display: inline-block; text-decoration: none; }
+a.btn.secondary { background: transparent; color: var(--link); border: 1px solid var(--accent); }
+a.btn.secondary:hover { background: var(--sel); }

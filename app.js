@@ -2,6 +2,7 @@
  *   1. Create New Memories: folders become proposed memories; after one review they are created as saved memories.
  *   2. Add to Existing Memory: files are added to one saved memory (its title, date and story are not changed).
  *   3. Bulk Upload for Later: files wait in the profile's Add Past Memories, to be organized in the app.
+ *   4. Import My Eulogy (eulogy.js): the member's finished eulogy (No AI) or eulogy information (AI-assisted).
  * Every path stages the files first (dc_import_*), then 1 and 2 save them with the same server steps the app's
  * Add Past Memories uses (dc_import_begin_save / dc_import_begin_add_to_memory, storage move, dc_import_attach_item,
  * dc_import_finish_group), so ownership, plan, video and storage rules apply unchanged.
@@ -32,6 +33,9 @@
     later: { label: 'Bulk Upload for Later', icon: '⇪',
       text: 'Upload photos and videos now. Organize them into memories whenever you\'re ready.',
       hint: 'They wait in Add Past Memories in the DayCasion app.' },
+    eulogy: { label: 'Import My Eulogy', icon: '✎',
+      text: 'Upload your finished eulogy, or information for DayCasion to prepare it with AI.',
+      hint: 'Private. Only your Legacy Executor receives the final eulogy.' },
   };
 
   // ------------------------------------------------------------------ DOM helpers
@@ -231,9 +235,13 @@
             if (await ask('Cancel this import?', 'Photos and videos from it that aren\'t in a memory yet are removed from DayCasion. Memories it already created stay. Your files on this computer are not touched.', 'Cancel the import')) cancelBatch(b.id, viewProfiles);
           }, text: 'Cancel it' })));
     });
+    if (S.goEulogy) { S.goEulogy = false; return openEulogy(viewProfiles); } // opened from the app's My Eulogy
     show(card(el('div', { class: 'row' }, el('h2', { text: 'Whose photos are these?' }), el('button', { class: 'link', onclick: signOut, text: 'Sign out' })),
       el('p', { class: 'muted small', text: 'Choose the memory profile these photos and videos belong to.' }),
-      list, storageLine()), ...resumeCards);
+      list, storageLine()), ...resumeCards,
+    card(el('h2', { text: 'My Eulogy' }),
+      el('p', { class: 'muted small', text: 'Upload your finished eulogy, or information for DayCasion to prepare it with AI. Private: only your Legacy Executor receives the final eulogy.' }),
+      el('div', { class: 'actions' }, el('button', { id: 'open-eulogy', class: 'secondary', onclick: () => openEulogy(viewProfiles), text: 'Import My Eulogy' }))));
   }
   function storageLine() {
     const st = S.storage; if (!st || !st.allowance_bytes) return null;
@@ -253,9 +261,18 @@
       el('span', { class: 'choice-hint', text: MODES[m].hint }));
     show(card(el('div', { class: 'row' }, el('h2', { text: 'What would you like to do with these photos and videos?' }),
       el('button', { class: 'link', onclick: viewProfiles, text: `For ${S.profile.name} · change` })),
-    el('div', { class: 'choices' }, option('create'), option('existing'), option('later'))));
+    el('div', { class: 'choices' }, option('create'), option('existing'), option('later'), S.profile.type === 'My Life' ? option('eulogy') : null)));
   }
-  function chooseMode(m) { S.mode = m; S.target = null; if (m === 'existing') viewPickMemory(); else viewChoose(); }
+  function chooseMode(m) {
+    if (m === 'eulogy') return openEulogy(viewMode);
+    S.mode = m; S.target = null; if (m === 'existing') viewPickMemory(); else viewChoose();
+  }
+  /** Import My Eulogy (eulogy.js). Needs no plan or purchase to prepare, so it is also offered on the profile screen. */
+  function openEulogy(back) {
+    clearSelection();
+    window.DcEulogy.open({ el, show, card, choose, ask, rpc, authed, plainErr, errText, url: URL_, key: KEY,
+      session: () => session, back: back || viewProfiles });
+  }
 
   /** "For Audrey · Create New Memories · change": where the member is, with a way back to the three choices. */
   function crumbs(extra) {
@@ -1212,6 +1229,7 @@
 
   // ------------------------------------------------------------------ start
   session = loadSession();
+  try { S.goEulogy = new URLSearchParams(window.location.search).get('go') === 'eulogy'; } catch (e) { S.goEulogy = false; }
   if (session && session.access_token) viewProfiles(); else viewSignIn();
   window.DcImportApp = { state: () => S }; // read-only hook for the automated tests
 })();
