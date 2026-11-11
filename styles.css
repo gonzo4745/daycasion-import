@@ -175,3 +175,18 @@ progress { width: 100%; height: 10px; accent-color: var(--accent); }
 a.btn { display: inline-block; text-decoration: none; }
 a.btn.secondary { background: transparent; color: var(--link); border: 1px solid var(--accent); }
 a.btn.secondary:hover { background: var(--sel); }
+
+/* My Eulogy: locked state, Personal Video Eulogy and the storage panel */
+.locked-note strong { display: block; }
+.video-card { margin-top: 18px; }
+#eu-video-player { width: 100%; max-height: 60vh; border-radius: 12px; background: #000; display: block; margin: 10px 0; }
+.storage-panel { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 14px 0; display: grid; gap: 6px; background: var(--bg); }
+.storage-panel > strong { font-size: 17px; color: var(--heading); }
+.storage-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); margin: 6px 0 4px; }
+.storage-bar .used { background: var(--muted); }
+.storage-bar .video { background: var(--accent); }
+.storage-bar .video.over { background: var(--err, #c62828); }
+.srow { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.srow strong { font-weight: 600; white-space: nowrap; }
+.srow.total-row { border-top: 1px solid var(--line); padding-top: 6px; font-size: 16px; }
+.srow.err strong { color: var(--err, #c62828); }

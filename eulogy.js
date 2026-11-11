@@ -45,8 +45,10 @@
     const out = [];
     if (info.locked) out.push(h('div', { class: 'note', role: 'status' }, h('strong', { text: 'Your legacy process has begun.' }),
       h('p', { class: 'small', text: 'Your eulogy can no longer be changed.' })));
-    else if (!info.entitled) out.push(h('div', { class: 'note' }, h('strong', { text: 'You can prepare your eulogy now.' }),
-      h('p', { class: 'small', text: 'Your Legacy Executor receives it only with Eulogy Only or the Complete Legacy Package, a one-time purchase in the DayCasion app (Settings > Legacy Executor). Legacy Access on its own does not include a eulogy.' })));
+    else if (!info.entitled) out.push(h('div', { class: 'note locked-note', id: 'eu-purchase', role: 'status' }, h('strong', { text: '🔒 My Eulogy is unlocked with a one-time purchase' }),
+      h('p', { class: 'small', text: 'Eulogy Only or the Complete Legacy Package includes all three: My Completed Eulogy (No AI), My Eulogy Information (AI-assisted) and a Personal Video Eulogy. Buy it in the DayCasion app: Settings > Legacy Executor. Legacy Access on its own does not include a eulogy.' }),
+      h('p', { class: 'small muted', text: 'Until then you can look around and download the Eulogy Preparation Guide. Uploading, saving and choosing a eulogy are unlocked after purchase.' +
+        ((info.documents || []).length || info.video ? ' Anything you already uploaded is kept; you can still review or delete it.' : '') })));
     return out;
   }
 
@@ -104,6 +106,7 @@
         option('eu-information', 'ai', '✎', OPTION.ai,
           'Download the Eulogy Preparation Guide, answer any questions you like, and upload it or your own notes. DayCasion writes your eulogy with AI. Your executor receives only the finished eulogy.',
           infos.length ? `${infos.length} information ${infos.length === 1 ? 'file' : 'files'} uploaded` : 'Nothing uploaded yet', () => viewInformation())),
+      videoSummary(),
       h('p', { class: 'small muted', text: 'You can upload, review, replace or delete your files here at any time until your legacy process begins.' })));
   }
 
@@ -124,9 +127,10 @@
           : 'We couldn\'t read text from this document (for example, a scanned page). That\'s fine: your executor will receive the document itself.' })));
       const acts = [d.has_text ? h('button', { class: 'secondary', onclick: () => viewText(d, viewCompleted), text: 'Review the text' }) : null,
         h('button', { class: 'secondary', onclick: () => openOriginal(d), text: 'Open my file' })];
-      if (!info.locked) acts.push(pickButton('Replace', 'completed', d.id), h('button', { class: 'secondary', onclick: () => remove(d, viewCompleted), text: 'Delete' }));
+      if (canPrepare()) acts.push(pickButton('Replace', 'completed', d.id));
+      if (!info.locked) acts.push(h('button', { class: 'secondary', onclick: () => remove(d, viewCompleted), text: 'Delete' }));
       parts.push(h('div', { class: 'actions' }, acts));
-      if (!info.locked && info.option !== 'completed') {
+      if (canPrepare() && info.option !== 'completed') {
         parts.push(h('div', { class: 'note' }, h('strong', { text: 'Use this as your eulogy?' }),
           h('p', { class: 'small', text: info.option === 'ai'
             ? 'You currently have My Eulogy Information (AI-assisted) selected. Choosing your completed eulogy means AI won\'t write one, and your AI permission is withdrawn.'
@@ -135,8 +139,10 @@
       } else if (info.option === 'completed') {
         parts.push(h('p', { class: 'small', text: '✓ Selected: your executor will receive this eulogy.' }));
       }
-    } else if (!info.locked) {
+    } else if (canPrepare()) {
       parts.push(uploadArea('completed', null, 'Choose your eulogy file'));
+    } else if (!info.locked) {
+      parts.push(h('p', { class: 'muted', text: 'Uploading is unlocked with Eulogy Only or the Complete Legacy Package.' }));
     } else parts.push(h('p', { class: 'muted', text: 'No completed eulogy was uploaded.' }));
     X.show(X.card(...parts));
   }
@@ -159,12 +165,12 @@
         ul.append(h('li', {}, h('strong', { text: d.file_name }),
           h('span', { class: 'small muted', text: ` · ${what} · ${d.text_chars.toLocaleString()} characters · uploaded ${fmtDate(d.ready_at)}` }),
           h('div', { class: 'actions' }, h('button', { class: 'small secondary', onclick: () => viewText(d, viewInformation), text: 'Review' }),
-            info.locked ? null : pickButton('Replace', 'information', d.id, 'small secondary'),
+            canPrepare() ? pickButton('Replace', 'information', d.id, 'small secondary') : null,
             info.locked ? null : h('button', { class: 'small secondary', onclick: () => remove(d, viewInformation), text: 'Delete' }))));
       }
       parts.push(h('h3', { text: 'Your information files' }), ul);
     }
-    if (!info.locked) {
+    if (canPrepare()) {
       if (list.length < max) parts.push(uploadArea('information', null, list.length ? 'Add another file' : 'Choose your file'));
       else parts.push(h('p', { class: 'small muted', text: `You have ${max} information files, the most you can keep. Replace or delete one to add another.` }));
     }
@@ -183,9 +189,9 @@
     if (info.option === 'ai' && info.ai_consent) {
       return h('div', { class: 'note', id: 'eu-ai-on' }, h('strong', { text: '✓ AI-assisted eulogy selected' }),
         h('p', { class: 'small', text: `When your legacy process begins, DayCasion writes your eulogy with AI from ${sourcesText()}. Photos, videos, voice recordings and your completed-eulogy file are never used.` }),
-        info.locked ? null : h('div', { class: 'actions' }, h('button', { class: 'small secondary', onclick: chooseAi, text: 'Change what AI may use' })));
+        canPrepare() ? h('div', { class: 'actions' }, h('button', { class: 'small secondary', onclick: chooseAi, text: 'Change what AI may use' })) : null);
     }
-    if (info.locked) return null;
+    if (!canPrepare()) return null;
     return h('div', { class: 'note' }, h('strong', { text: 'Use AI-assisted eulogy?' }),
       h('p', { class: 'small', text: info.option === 'completed'
         ? 'You currently have My Completed Eulogy (No AI) selected. Choosing AI-assisted means your executor receives the AI-written eulogy instead.'
@@ -277,6 +283,242 @@
       xhr.onerror = () => reject(Object.assign(new Error('upload'), { userMessage: 'The connection was interrupted. Please try again.' }));
       xhr.send(blob);
     });
+  }
+
+  // ------------------------------------------------------------------ Personal Video Eulogy (No AI)
+  // One video (MP4 or MOV, up to 60 minutes), alongside either written choice or on its own. It uses the member's own
+  // plan storage (no extra storage is included). Uploaded in 6 MB pieces (resumable), checked by DayCasion, never sent to AI.
+  const canPrepare = () => info.can_prepare !== false && !info.locked;
+  const VIDEO_TYPES = '.mp4,.mov,.m4v,video/mp4,video/quicktime';
+  const MAX_VIDEO_SECONDS = 3600;
+  const CHUNK = 6 * 1024 * 1024; // Supabase resumable uploads: 6 MB pieces
+  const fmtBytes = (b) => { b = Number(b) || 0; if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)} GB`; if (b >= 1048576) return `${Math.round(b / 1048576)} MB`; return `${Math.max(1, Math.ceil(b / 1024))} KB`; };
+  const clock = (s) => { s = Math.round(Number(s) || 0); const hh = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return hh ? `${hh}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`; };
+
+  function videoSummary() {
+    const v = info.video;
+    return h('section', { class: 'note video-card', id: 'eu-video-card' },
+      h('strong', { text: 'Add a Personal Video Eulogy' }),
+      h('p', { class: 'small', text: 'Leave a personal message in your own voice. Upload a video up to 60 minutes long to be delivered to your Legacy Executor alongside your written eulogy, if you have one.' }),
+      h('p', { class: 'small muted', id: 'eu-video-status', text: v ? `Your video: ${clock(v.duration_seconds)} · ${fmtBytes(v.size_bytes)} · uploaded ${fmtDate(v.ready_at)}` : 'No video uploaded yet.' }),
+      h('div', { class: 'actions' }, h('button', { id: 'eu-video', class: v ? 'secondary' : '', onclick: () => viewVideo(), text: v ? 'Preview, replace or delete' : (canPrepare() ? 'Upload Video' : 'View') })));
+  }
+
+  async function viewVideo(message) {
+    try { await load(); } catch (e) { return X.show(errorCard(e.userMessage || 'Please reload the page.')); }
+    const v = info.video;
+    const parts = [heading('Personal Video Eulogy', viewHome, 'Back to My Eulogy'), ...statusNotes(), noteOf(message)];
+    if (v) {
+      const player = h('video', { controls: '', preload: 'metadata', playsinline: '', id: 'eu-video-player', 'aria-label': 'Your video eulogy' });
+      signedVideoUrl(v.storage_path).then((u) => { if (u) player.src = u; });
+      parts.push(h('div', { class: 'note target', id: 'eu-video-current' }, h('strong', { text: v.file_name }),
+        h('span', { class: 'small muted', id: 'eu-video-facts', text: `${clock(v.duration_seconds)} long · ${fmtBytes(v.size_bytes)} · uploaded ${fmtDate(v.ready_at)}` }),
+        player,
+        h('p', { class: 'small', text: info.executor_receives_video ? 'Your Legacy Executor will receive this video exactly as you uploaded it, alongside any written eulogy.'
+          : 'Your Legacy Executor receives this video only with Eulogy Only or the Complete Legacy Package.' })),
+        h('div', { class: 'actions' }, canPrepare() ? videoPickButton('Replace Video', true) : null,
+          !info.locked ? h('button', { class: 'secondary', id: 'eu-video-delete', onclick: () => deleteVideo(v), text: 'Delete Video' }) : null));
+    } else if (info.locked) {
+      parts.push(h('p', { class: 'muted', text: 'No video eulogy was uploaded.' }));
+    }
+    if (!v && canPrepare()) {
+      parts.push(h('h3', { text: 'Upload Your Video Eulogy' }),
+        h('p', { text: 'Record a personal message for your loved ones or upload a completed video eulogy, up to 60 minutes long. Your video counts toward your existing DayCasion subscription storage. No additional storage is included with this feature.' }),
+        storagePanel(null), videoDrop());
+    } else if (!v && !info.locked) {
+      parts.push(h('p', { text: 'Record a personal message for your loved ones or upload a completed video eulogy, up to 60 minutes long. Your video counts toward your existing DayCasion subscription storage.' }),
+        h('p', { class: 'muted', text: 'Uploading a video is unlocked with Eulogy Only or the Complete Legacy Package.' }));
+    } else if (v && canPrepare()) {
+      parts.push(h('p', { class: 'small muted', text: 'Replacing: your current video stays until the new one has uploaded and been checked. Only the difference in size counts toward your storage.' }));
+    }
+    X.show(X.card(...parts));
+  }
+
+  async function signedVideoUrl(path) {
+    const s = await X.authed(`/storage/v1/object/sign/legacy-videos/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'POST', body: { expiresIn: 3600 } });
+    const signed = s.ok && s.data && (s.data.signedURL || s.data.signedUrl);
+    return signed ? `${X.url}/storage/v1${signed.startsWith('/') ? '' : '/'}${signed}` : null;
+  }
+
+  /** The storage figures (from the member's account) with an optional selected file; replacing counts the released video. */
+  function storagePanel(file) {
+    const st = info.storage || {};
+    const total = Number(st.allowance_bytes) || 0, usedB = Number(st.used_bytes) || 0;
+    const current = file && file.replacing ? Number(st.current_video_bytes) || 0 : 0;
+    const avail = Math.max(total - usedB, 0);
+    const size = file ? file.size : 0;
+    const after = total - usedB + current - size;
+    const pct = (x) => `${Math.max(0, Math.min(100, total ? (x / total) * 100 : 0)).toFixed(2)}%`;
+    const bar = h('div', { class: 'storage-bar', role: 'img', 'aria-label': `Storage: ${fmtBytes(usedB)} of ${fmtBytes(total)} used` + (file ? `, plus this video ${fmtBytes(size)}` : '') },
+      h('span', { class: 'used', style: `width:${pct(usedB - current)}` }),
+      file ? h('span', { class: after < 0 ? 'video over' : 'video', style: `width:${pct(Math.min(size, Math.max(total - usedB + current, 0)) || 0)}` }) : null);
+    const row = (k, v, cls) => h('div', { class: 'srow' + (cls ? ' ' + cls : '') }, h('span', { text: k }), h('strong', { text: v }));
+    const rows = [row('Plan', st.plan || (total ? 'Storage add-on' : 'No plan')), row('Total storage', fmtBytes(total)), row('Currently used', fmtBytes(usedB)),
+      row('Available before upload', fmtBytes(avail))];
+    if (file) {
+      if (current) rows.push(row('Current video (replaced)', `− ${fmtBytes(current)}`));
+      rows.push(row('Selected video', fmtBytes(size)), row('Available after upload', after >= 0 ? fmtBytes(after) : `${fmtBytes(-after)} short`, after >= 0 ? 'total-row' : 'total-row err'));
+    }
+    return h('div', { class: 'storage-panel', id: 'eu-storage' }, h('strong', { text: 'Your Storage' }), bar, ...rows);
+  }
+
+  function videoPickButton(label, replacing, cls) {
+    const input = h('input', { type: 'file', accept: VIDEO_TYPES, hidden: true, 'aria-label': label,
+      onchange: () => { const f = input.files && input.files[0]; input.value = ''; if (f) selectVideo(f, replacing); } });
+    return h('span', { id: 'eu-video-pick' }, input, h('button', { class: cls || 'secondary', onclick: () => input.click(), text: label }));
+  }
+  function videoDrop() {
+    const zone = h('div', { class: 'drop', id: 'eu-drop-video' }, h('p', { text: 'Drop your video here, or' }),
+      h('div', { class: 'actions' }, videoPickButton('Upload Video', false, 'primary')),
+      h('p', { class: 'small muted', text: 'MP4 or MOV, up to 60 minutes. 1080p and other common resolutions are fine. No separate size limit: it only needs to fit in your available storage.' }));
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', (e) => { e.preventDefault(); zone.classList.remove('over'); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) selectVideo(f, !!info.video); });
+    return zone;
+  }
+
+  /** Reads the selected file's length and picture size in the browser (the server checks the length again). */
+  function readVideoMeta(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file); const v = document.createElement('video'); let done = false;
+      const finish = (m) => { if (done) return; done = true; URL.revokeObjectURL(url); v.removeAttribute('src'); resolve(m); };
+      v.preload = 'metadata'; v.muted = true;
+      v.onloadedmetadata = () => finish({ duration: Number.isFinite(v.duration) ? v.duration : null, width: v.videoWidth || null, height: v.videoHeight || null });
+      v.onerror = () => finish({ duration: null, width: null, height: null });
+      setTimeout(() => finish({ duration: null, width: null, height: null }), 15000);
+      v.src = url;
+    });
+  }
+
+  async function selectVideo(file, replacing) {
+    const ext = ((file.name.match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || '').toLowerCase();
+    if (!['mp4', 'mov', 'm4v'].includes(ext)) return viewVideo(h('p', { class: 'err', role: 'alert', text: 'Please choose an MP4 (.mp4) or MOV (.mov) video.' }));
+    if (!file.size) return viewVideo(h('p', { class: 'err', role: 'alert', text: 'This video file is empty.' }));
+    X.show(X.card(h('h2', { text: 'Upload Your Video Eulogy' }), h('p', { role: 'status', text: `Reading ${file.name}…` })));
+    const meta = await readVideoMeta(file);
+    if (meta.duration && meta.duration >= MAX_VIDEO_SECONDS + 1) {
+      return viewVideo(h('p', { class: 'err', role: 'alert', text: `This video is ${clock(meta.duration)} long. Videos can be up to 60 minutes. Please choose a shorter video.` }));
+    }
+    try { await load(); } catch (e) { return X.show(errorCard(e.userMessage || 'Please reload the page.')); }
+    replacing = replacing && !!info.video;
+    const st = info.storage || {};
+    const after = Number(st.allowance_bytes) - Number(st.used_bytes) + (replacing ? Number(st.current_video_bytes) || 0 : 0) - file.size;
+    const parts = [h('h2', { text: replacing ? 'Replace Your Video Eulogy' : 'Upload Your Video Eulogy' }),
+      h('p', { text: 'Record a personal message for your loved ones or upload a completed video eulogy, up to 60 minutes long. Your video counts toward your existing DayCasion subscription storage. No additional storage is included with this feature.' }),
+      h('p', { class: 'small', id: 'eu-video-selected', text: `${file.name} · ${fmtBytes(file.size)}` + (meta.duration ? ` · ${clock(meta.duration)} long` : '') + (meta.height ? ` · ${meta.height}p` : '') }),
+      storagePanel({ size: file.size, replacing })];
+    if (after < 0) {
+      parts.push(h('div', { class: 'note', role: 'alert', id: 'eu-storage-short' }, h('strong', { text: 'Not enough storage for this video' }),
+        h('p', { class: 'small', text: `This video needs ${fmtBytes(file.size)}, but you have ${fmtBytes(Math.max(file.size + after, 0))} available${replacing ? ' (including the video it replaces)' : ''}. You need ${fmtBytes(-after)} more.` }),
+        h('p', { class: 'small', text: 'Add Storage in the DayCasion app: Settings > Profile Subscriptions > Add Storage. Or choose a shorter or smaller video.' })),
+        h('div', { class: 'actions' }, h('button', { class: 'secondary', onclick: () => viewVideo(), text: 'Back' })));
+      return X.show(X.card(...parts));
+    }
+    if (!meta.duration) parts.push(h('p', { class: 'small muted', text: 'Your browser couldn\'t read this video\'s length. DayCasion checks it after uploading (up to 60 minutes).' }));
+    parts.push(h('div', { class: 'note', id: 'eu-video-confirm' },
+      h('p', { text: `This video will use ${fmtBytes(file.size)} of your DayCasion storage. You will have approximately ${fmtBytes(after)} available after uploading.` }),
+      replacing ? h('p', { class: 'small muted', text: 'Your current video stays until this one has uploaded and been checked, then it is removed.' }) : null,
+      h('div', { class: 'actions' }, h('button', { class: 'primary', id: 'eu-video-continue', onclick: () => uploadVideo(file, meta), text: 'Continue Upload' }),
+        h('button', { class: 'secondary', onclick: () => viewVideo(), text: 'Cancel' }))));
+    X.show(X.card(...parts));
+  }
+
+  let activeUpload = null;
+  async function uploadVideo(file, meta) {
+    const bar = h('progress', { max: '100', value: '0', id: 'eu-video-progress', 'aria-label': 'Upload progress' });
+    const status = h('p', { role: 'status', id: 'eu-video-upload-status', text: `Starting ${file.name}…` });
+    const cancel = h('button', { class: 'secondary', id: 'eu-video-cancel', text: 'Cancel Upload', onclick: () => { if (activeUpload) activeUpload.cancel(); } });
+    X.show(X.card(h('h2', { text: 'Uploading Your Video Eulogy' }), status, bar,
+      h('p', { class: 'small muted', text: 'Keep this page open until the upload finishes. Large videos can take a while; if the connection drops, the upload continues where it stopped.' }),
+      h('div', { class: 'actions' }, cancel)));
+    let begun = null;
+    try {
+      const b = await X.rpc('dc_my_eulogy_video_begin', { p_file_name: file.name, p_size: file.size,
+        p_duration_seconds: meta.duration ? Math.round(meta.duration * 1000) / 1000 : null, p_width: meta.width, p_height: meta.height });
+      if (!b.ok) throw Object.assign(new Error('begin'), { userMessage: X.plainErr(b, 'The upload couldn\'t start. Please try again.') });
+      begun = b.data;
+      const t0 = Date.now();
+      await resumableUpload(begun, file, (sent) => {
+        bar.value = String(Math.floor((sent / file.size) * 100));
+        const secs = (Date.now() - t0) / 1000; const rate = sent / Math.max(secs, 1);
+        const left = rate > 0 ? (file.size - sent) / rate : 0;
+        status.textContent = `Uploading ${fmtBytes(sent)} of ${fmtBytes(file.size)}` + (sent < file.size && secs > 5 ? ` · about ${left > 90 ? Math.ceil(left / 60) + ' minutes' : Math.ceil(left) + ' seconds'} left` : '');
+      });
+      cancel.disabled = true; bar.removeAttribute('value'); status.textContent = 'Checking your video…';
+      const r = await X.authed('/functions/v1/legacy-eulogy-docs', { method: 'POST', body: { action: 'finish_video', id: begun.id } });
+      if (!r.ok) throw Object.assign(new Error('finish'), { userMessage: X.plainErr(r, 'We couldn\'t check this video. Please try again.'), kept: true });
+      await load();
+      const v = info.video;
+      viewVideo(h('p', { class: 'ok', role: 'status', id: 'eu-video-saved', text: `✓ Your video eulogy was uploaded and saved privately${v ? ` (${clock(v.duration_seconds)}, ${fmtBytes(v.size_bytes)})` : ''}. You have ${fmtBytes(info.storage && info.storage.available_bytes)} of storage available.` }));
+    } catch (e) {
+      if (e.message === 'signed-out') return;
+      if (begun && !e.kept) await X.rpc('dc_my_eulogy_video_delete', { p_id: begun.id }).catch(() => {});
+      releaseVideos();
+      viewVideo(h('p', { class: e.cancelled ? 'muted' : 'err', role: e.cancelled ? 'status' : 'alert',
+        text: e.cancelled ? 'Upload cancelled. Nothing was changed.' : (e.userMessage || 'The upload didn\'t complete. Please try again.') + (info.video ? ' Your current video is unchanged.' : '') }));
+    } finally { activeUpload = null; }
+  }
+
+  /** tus 1.0 resumable upload to Supabase Storage (POST to create, PATCH 6 MB pieces, HEAD to resume after an error). */
+  function resumableUpload(begun, file, onProgress) {
+    const endpoint = `${X.url}/storage/v1/upload/resumable`;
+    const b64 = (s) => btoa(unescape(encodeURIComponent(s)));
+    let location = null; let offset = 0; let xhr = null; let cancelled = false;
+    const fail = (msg, extra) => Object.assign(new Error('upload'), { userMessage: msg }, extra || {});
+    const request = async (method, url, headers, body, onUp) => new Promise((resolve, reject) => {
+      (async () => {
+        const token = await X.token();
+        xhr = new XMLHttpRequest(); xhr.open(method, url);
+        const all = { 'Tus-Resumable': '1.0.0', apikey: X.key, Authorization: `Bearer ${token}`, ...headers };
+        for (const [k, v] of Object.entries(all)) xhr.setRequestHeader(k, v);
+        if (onUp) xhr.upload.onprogress = (e) => onUp(e.loaded);
+        xhr.onload = () => resolve(xhr);
+        xhr.onerror = () => reject(fail('The connection was interrupted.', { network: true }));
+        xhr.onabort = () => reject(fail('Upload cancelled.', { cancelled: true }));
+        xhr.send(body ?? null);
+      })().catch(reject);
+    });
+    const run = (async () => {
+      const meta = { bucketName: 'legacy-videos', objectName: begun.path, contentType: begun.mime_type, cacheControl: '3600' };
+      const c = await request('POST', endpoint, { 'Upload-Length': String(file.size), 'x-upsert': 'false',
+        'Upload-Metadata': Object.entries(meta).map(([k, v]) => `${k} ${b64(v)}`).join(',') });
+      if (c.status === 413) throw fail('This video is too large to upload in one piece right now. Please contact info@daycasion.com.');
+      if (c.status === 403 || c.status === 401) throw fail('This upload wasn\'t allowed. Please reload the page and try again.');
+      if (c.status !== 201) throw fail('The upload couldn\'t start. Please try again.');
+      location = c.getResponseHeader('Location');
+      if (location && location.startsWith('/')) location = new URL(location, X.url).href;
+      let retries = 0;
+      while (offset < file.size) {
+        if (cancelled) throw fail('Upload cancelled.', { cancelled: true });
+        const end = Math.min(offset + CHUNK, file.size);
+        try {
+          const p = await request('PATCH', location, { 'Upload-Offset': String(offset), 'Content-Type': 'application/offset+octet-stream' },
+            file.slice(offset, end), (n) => onProgress(offset + n));
+          if (p.status === 204) { offset = Number(p.getResponseHeader('Upload-Offset')) || end; retries = 0; onProgress(offset); continue; }
+          if (p.status === 409) throw fail('offset', { network: true }); // ask the server where to continue
+          throw fail('The upload didn\'t complete. Please try again.', { status: p.status });
+        } catch (e) {
+          if (e.cancelled) throw e;
+          if (!e.network || ++retries > 8) throw e.network ? fail('The connection was interrupted several times. Please check your internet connection and try again.') : e;
+          await new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** retries)));
+          const hd = await request('HEAD', location, {}).catch(() => null);
+          if (hd && hd.status === 200) offset = Number(hd.getResponseHeader('Upload-Offset')) || offset;
+        }
+      }
+    })();
+    activeUpload = { cancel: () => { cancelled = true; if (xhr) xhr.abort(); if (location) request('DELETE', location, {}).catch(() => {}); } };
+    return run;
+  }
+
+  /** Frees the storage of deleted, replaced or cancelled videos straight away (the cleanup job would do it later). */
+  const releaseVideos = () => X.authed('/functions/v1/legacy-eulogy-docs', { method: 'POST', body: { action: 'release_video' } }).catch(() => null);
+
+  async function deleteVideo(v) {
+    if (!await X.ask('Delete your video eulogy?', ['Your executor won\'t receive a video unless you upload another one. Its storage is released.', 'The video on your computer is not touched.'], 'Delete Video')) return;
+    const r = await X.rpc('dc_my_eulogy_video_delete', { p_id: v.id });
+    if (r.ok) await releaseVideos();
+    viewVideo(r.ok ? h('p', { class: 'ok', role: 'status', text: 'Deleted your video eulogy. Its storage has been released.' }) : h('p', { class: 'err', role: 'alert', text: X.plainErr(r, 'That didn\'t work. Please try again.') }));
   }
 
   // ------------------------------------------------------------------ review, open, delete

@@ -267,11 +267,14 @@
     if (m === 'eulogy') return openEulogy(viewMode);
     S.mode = m; S.target = null; if (m === 'existing') viewPickMemory(); else viewChoose();
   }
-  /** Import My Eulogy (eulogy.js). Needs no plan or purchase to prepare, so it is also offered on the profile screen. */
+  /** Import My Eulogy (eulogy.js). Needs no plan (preparing needs the Eulogy purchase; viewing it does not), so it is also
+   *  offered on the profile screen. */
   function openEulogy(back) {
     clearSelection();
     window.DcEulogy.open({ el, show, card, choose, ask, rpc, authed, plainErr, errText, url: URL_, key: KEY,
-      session: () => session, back: back || viewProfiles });
+      session: () => session, back: back || viewProfiles,
+      // A fresh access token for long video uploads (each chunk asks again; refreshed a few minutes before it expires).
+      token: async () => { if (session && session.expires_at - Date.now() / 1000 < 300) await refresh(); return session && session.access_token; } });
   }
 
   /** "For Audrey · Create New Memories · change": where the member is, with a way back to the three choices. */
