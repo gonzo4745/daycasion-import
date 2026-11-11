@@ -190,3 +190,56 @@ a.btn.secondary:hover { background: var(--sel); }
 .srow strong { font-weight: 600; white-space: nowrap; }
 .srow.total-row { border-top: 1px solid var(--line); padding-top: 6px; font-size: 16px; }
 .srow.err strong { color: var(--err, #c62828); }
+
+/* Organization Enhancement: three choices, Sort My Photos by Date (dashboard, galleries, viewer), Upload for Later limit */
+.choices.three { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.note.limit strong { color: var(--heading); }
+.note.limit p { margin: 4px 0 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; }
+.stat strong { font-size: 22px; color: var(--heading); line-height: 1.2; }
+.stat span { font-size: 14px; color: var(--muted); }
+.years { display: grid; gap: 6px; }
+details.year { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin: 0; background: var(--bg); }
+details.year > summary { font-weight: 600; padding: 4px 0; }
+details.year .y { font-size: 18px; color: var(--heading); }
+.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0 4px; }
+button.month { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left; background: var(--card); color: var(--text);
+  border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-weight: 400; }
+button.month:hover { border-color: var(--accent); background: var(--sel); }
+button.month strong { color: var(--heading); }
+button.month span { font-size: 14px; color: var(--muted); }
+button.month .used-count { color: var(--ok); }
+button.month.special { min-height: 72px; }
+.org-bar { justify-content: flex-start; }
+.org-bar #org-create { margin-left: auto; }
+.grid.org { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+.tile.org { cursor: default; }
+.tile.org .tile-sel { position: absolute; inset: 0; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; display: block; width: 100%; height: 100%; }
+.tile.org .tile-sel:disabled { cursor: not-allowed; }
+.tile.org .tile-sel img { position: absolute; inset: 0; }
+.tile.org.blocked img { opacity: .45; }
+.tile.org .tile-view { position: absolute; right: 5px; bottom: 22px; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 10px;
+  background: rgba(255,255,255,.92); color: #0a1640; border: 1px solid rgba(10,22,64,.25); opacity: 0; }
+.tile.org:hover .tile-view, .tile.org .tile-view:focus-visible { opacity: 1; }
+button.tile-view:not(:disabled):hover { background: #ffffff; }
+.tile .flag { position: absolute; left: 5px; top: 5px; font-size: 11px; font-weight: 700; border-radius: 8px; padding: 1px 6px; background: rgba(255,255,255,.94); color: #0a1640; }
+.tile .flag.used { background: #3e6b47; color: #ffffff; }
+.tile .flag.err { top: auto; bottom: 22px; background: #a94c4c; color: #ffffff; }
+.tile.org.used { border-color: #3e6b47; }
+.tile.org.on { border-color: var(--accent); }
+.tile.org .check { pointer-events: none; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; max-width: calc(100% - 32px); background: var(--heading); color: var(--bg);
+  border-radius: 12px; padding: 12px 18px; box-shadow: 0 6px 24px rgba(10,22,64,.25); font-weight: 600; }
+dialog.dlg.viewer { max-width: 920px; }
+.viewer-body { background: #000; border-radius: 12px; display: flex; justify-content: center; align-items: center; min-height: 200px; }
+.viewer-body img, .viewer-body video { max-width: 100%; max-height: 65vh; display: block; }
+.viewer-body p { color: #fff; padding: 20px; }
+.viewer-info { margin-top: 10px; display: grid; gap: 2px; overflow-wrap: anywhere; }
+dialog.dlg.create { max-width: 640px; }
+dialog.dlg.create input.title { font-weight: 600; font-size: 17px; }
+.strip { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.strip img, .strip .ph, .strip .more { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; color: var(--muted); }
+@media (max-width: 600px) { .org-bar #org-create { margin-left: 0; width: 100%; } .grid.org { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } }
+.tile.org .badge { left: auto; right: 6px; bottom: auto; top: 34px; }
+.card > h3:first-child { margin-top: 0; }

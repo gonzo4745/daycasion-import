@@ -154,6 +154,7 @@
     video_length_unknown: "DayCasion couldn't read this video", video_not_included: 'Videos are part of the Video plan',
     storage_full: 'Not enough storage left', already_staged: 'Already waiting in Add Past Memories',
     already_in_a_memory: 'Already added to a memory', duplicate_in_selection: 'The same file is also in another folder you chose',
+    batch_limit: 'Over the 50-file limit for one Upload for Later batch', copy_failed: "DayCasion couldn't copy the stored photo",
     invalid: "This file couldn't be read", unreadable: "This file couldn't be read",
   };
 
@@ -162,7 +163,7 @@
     unsupported_type: 'not a photo or video', empty_file: 'empty', file_too_large: 'too large',
     video_length_unknown: 'video unreadable', video_not_included: 'videos need the Video plan', storage_full: 'not enough storage',
     profile_not_subscribed: 'plan needed', invalid: 'unreadable', unreadable: 'unreadable', limit: 'over the 10,000-file limit',
-    already_staged: 'already waiting in the app', already_in_a_memory: 'already in a memory', duplicate_in_selection: 'duplicate',
+    already_staged: 'already waiting in the app', already_in_a_memory: 'already in a memory', duplicate_in_selection: 'duplicate', batch_limit: 'over the 50-file limit',
   };
 
   /** Heading for the files that are not imported, naming the actual reason: "2 duplicate photos skipped",
@@ -272,8 +273,18 @@
         if (size === 1 && o + 16 <= end) { size = Number(v.getBigUint64(o + 8)); header = 16; }
         if (size === 0) size = end - o;
         if (size < header || o + size > end) return;
-        if (type === 'moov' || type === 'trak') walk(o + header, o + size, depth + 1);
-        else if (type === 'mvhd') {
+        if (type === 'moov' || type === 'trak' || type === 'udta') walk(o + header, o + size, depth + 1);
+        else if (type === 'meta') {
+          // QuickTime's meta has no version/flags; the ISO one (inside udta) has 4 bytes of them.
+          const at = o + header;
+          const iso = at + 8 <= o + size && String.fromCharCode(v.getUint8(at + 8), v.getUint8(at + 9), v.getUint8(at + 10), v.getUint8(at + 11)) === 'hdlr' && v.getUint32(at) === 0;
+          readAppleMeta(v, iso ? at + 4 : at, o + size, out);
+        } else if (type === '\u00a9day' && !out.dayText) {
+          // ©day: a QuickTime text atom (2-byte length, 2-byte language, text) or an ilst-style data atom.
+          const len = o + 12 <= o + size ? v.getUint16(o + header) : 0;
+          const txt = utf8(v, o + header + 4, Math.min(len, size - header - 4));
+          if (/^\d{4}-\d{2}-\d{2}/.test(txt)) out.dayText = txt;
+        } else if (type === 'mvhd') {
           const ver = v.getUint8(o + header);
           const b = o + header + 4;
           let created, scale, dur;
@@ -297,6 +308,51 @@
     return out;
   }
 
+  function utf8(v, start, len) {
+    if (!(len > 0) || start + len > v.byteLength) return '';
+    try { return new TextDecoder().decode(new Uint8Array(v.buffer, v.byteOffset + start, len)).replace(/\0+$/, '').trim(); } catch (e) { return ''; }
+  }
+  /** moov/meta with 'keys' and 'ilst': iPhone videos keep com.apple.quicktime.creationdate there, in local time
+   *  with its UTC offset ("2010-12-25T09:14:03-0500"). */
+  function readAppleMeta(v, start, end, out) {
+    const boxes = {};
+    for (let o = start; o + 8 <= end;) {
+      const size = v.getUint32(o); if (size < 8 || o + size > end) break;
+      boxes[String.fromCharCode(v.getUint8(o + 4), v.getUint8(o + 5), v.getUint8(o + 6), v.getUint8(o + 7))] = [o, size];
+      o += size;
+    }
+    if (!boxes.keys || !boxes.ilst) return;
+    const keys = [];
+    const [ko, ks] = boxes.keys; const n = v.getUint32(ko + 12);
+    for (let i = 0, o = ko + 16; i < n && i < 200 && o + 8 <= ko + ks; i++) {
+      const sz = v.getUint32(o); if (sz < 8) break; keys.push(utf8(v, o + 8, sz - 8)); o += sz;
+    }
+    const want = keys.indexOf('com.apple.quicktime.creationdate') + 1; // ilst items are numbered from 1
+    if (!want) return;
+    const [io, is] = boxes.ilst;
+    for (let o = io + 8; o + 8 <= io + is;) {
+      const sz = v.getUint32(o); if (sz < 8) break;
+      if (v.getUint32(o + 4) === want) {
+        for (let d = o + 8; d + 16 <= o + sz;) { // the item's 'data' atom: type (4), locale (4), then the value
+          const dsz = v.getUint32(d); if (dsz < 16) break;
+          if (String.fromCharCode(v.getUint8(d + 4), v.getUint8(d + 5), v.getUint8(d + 6), v.getUint8(d + 7)) === 'data') { out.appleDate = utf8(v, d + 16, dsz - 16); return; }
+          d += dsz;
+        }
+      }
+      o += sz;
+    }
+  }
+
+  /** "2010-12-25T09:14:03-0500" / "...-05:00" / "...Z" / "2010-12-25T09:14" -> capture info (the day as written there). */
+  function isoCapture(s, source) {
+    const m = s && String(s).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?/);
+    if (!m || !okYear(+m[1]) || !validDay(+m[1], +m[2], +m[3])) return null;
+    const local = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}`;
+    const off = m[7] ? (m[7] === 'Z' ? 'Z' : m[7].replace(/^([+-]\d{2}):?(\d{2})$/, '$1:$2')) : null;
+    const at = off ? new Date(local + off) : null;
+    return { day: `${m[1]}-${m[2]}-${m[3]}`, local, at: at && !isNaN(at) ? at.toISOString() : null, source };
+  }
+
   /** "2026:11:14 15:02:00" (+ optional "+02:00") -> capture info. The calendar day is taken as written. */
   function exifCapture(exif) {
     const s = exif && (exif.dateTimeOriginal || exif.dateTimeDigitized);
@@ -308,6 +364,9 @@
   }
 
   function videoCapture(mp4) {
+    // The local date the camera wrote (iPhone, many cameras) is preferred: the UTC movie time can fall on another day.
+    const local = mp4 && (isoCapture(mp4.appleDate, 'video') || isoCapture(mp4.dayText, 'video'));
+    if (local) return local;
     if (!mp4 || !mp4.created) return null;
     const d = mp4.created;
     return { day: iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()), local: null, at: d.toISOString(), source: 'video' };
@@ -595,12 +654,107 @@
     return `${Math.max(1, Math.ceil(b / 1024))} KB`;
   }
 
+  // ---------------------------------------------------------------- Sort My Photos by Date
+  /** Where the MP4/MOV movie box is (it can be at the start or, for many cameras, at the end): walks the top-level
+   *  boxes with small reads. read(offset, length) -> ArrayBuffer. Null when there is none. */
+  async function findMoov(read, fileSize) {
+    let o = 0;
+    for (let i = 0; i < 64 && o + 8 <= fileSize; i++) {
+      const v = new DataView(await read(o, 16));
+      if (v.byteLength < 8) return null;
+      let size = v.getUint32(0);
+      const type = String.fromCharCode(v.getUint8(4), v.getUint8(5), v.getUint8(6), v.getUint8(7));
+      if (size === 1 && v.byteLength >= 16) size = Number(v.getBigUint64(8));
+      if (size === 0) size = fileSize - o;
+      if (size < 8) return null;
+      if (type === 'moov') return { offset: o, size: Math.min(size, fileSize - o) };
+      o += size;
+    }
+    return null;
+  }
+
+  /** A camera's default clock (never set) or an impossible date: shown for review instead of being trusted. */
+  function suspiciousCapture(capture, now) {
+    if (!capture || !capture.day) return null;
+    const [y, m, d] = capture.day.split('-').map(Number);
+    const t = capture.local ? capture.local.slice(11) : '';
+    if (y <= 1980 && capture.source !== 'member') return 'camera_default';
+    if (m === 1 && d === 1 && (t === '00:00:00' || t === '00:00:01' || t === '12:00:00')) return 'camera_default';
+    const today = (now || new Date()).toISOString().slice(0, 10);
+    if (capture.day > today) return 'future';
+    return null;
+  }
+
+  /** The date a file is sorted by: the member's correction, then a correction saved with an earlier import, then
+   *  the date taken. Never the file's modified date. { date: 'YYYY-MM-DD', precision, source } or null. */
+  function sortDate(f, corrections) {
+    const c = (corrections && f.qid && corrections[f.qid]) || f.memberDate || null;
+    if (c && c.precision === 'unknown') return null;
+    if (c && c.date) return { date: c.date, precision: c.precision || 'day', source: 'member' };
+    if (f.capture && f.capture.day) return { date: f.capture.day, precision: 'day', source: f.capture.source };
+    return null;
+  }
+
+  /** Year -> month -> files, Dates Unknown and dates to check. months[0] holds a year's files whose month isn't known.
+   *  Files in a month are in the order they were taken (then by name). */
+  function organizeByDate(files, { corrections = {}, reviewed = {}, now } = {}) {
+    const years = new Map(); const unknown = []; const review = [];
+    for (const f of files) {
+      const d = sortDate(f, corrections);
+      const own = !(corrections[f.qid] || f.memberDate);
+      if (!d) { unknown.push(f.key); continue; }
+      if (own && !reviewed[f.qid] && suspiciousCapture(f.capture, now)) { review.push(f.key); continue; }
+      const y = +d.date.slice(0, 4); const m = d.precision === 'year' || d.precision === 'approximate' ? 0 : +d.date.slice(5, 7);
+      if (!years.has(y)) years.set(y, new Map());
+      const ym = years.get(y); if (!ym.has(m)) ym.set(m, []); ym.get(m).push(f);
+    }
+    const when = (f) => { const d = sortDate(f, corrections); const t = (f.capture && (f.capture.local || (f.capture.at || '').slice(0, 19))) || '';
+      return `${d ? d.date : '9999'}T${d && d.source !== 'member' && t ? t.slice(11) : '99'}`; };
+    const out = [...years].sort((a, b) => a[0] - b[0]).map(([year, ms]) => {
+      const months = [...ms].sort((a, b) => (a[0] || 13) - (b[0] || 13)).map(([month, list]) => ({ month,
+        items: list.sort((a, b) => when(a).localeCompare(when(b)) || naturalCompare(a.relativePath, b.relativePath)).map((f) => f.key) }));
+      return { year, count: months.reduce((n, x) => n + x.items.length, 0), months };
+    });
+    const byName = (k) => files.find((f) => f.key === k);
+    const ord = (list) => list.map(byName).sort((a, b) => naturalCompare(a.relativePath, b.relativePath)).map((f) => f.key);
+    const dated = out.reduce((n, y) => n + y.count, 0);
+    return { years: out, unknown: ord(unknown), review: ord(review), totals: { files: files.length, years: out.length, dated, needReview: unknown.length + review.length } };
+  }
+
+  /** A memory date for the chosen files that never claims more than they show: one day -> that day; one month ->
+   *  that month; one year -> that year; otherwise unknown (the member chooses). Corrections count as given. */
+  function suggestMemoryDate(files, corrections) {
+    const ds = files.map((f) => sortDate(f, corrections));
+    if (!ds.length || ds.some((d) => !d)) return { date: null, precision: 'unknown' };
+    const day = (d) => (['day', 'approximate_day'].includes(d.precision) ? d.date : null);
+    const month = (d) => (['day', 'approximate_day', 'month', 'approximate_month'].includes(d.precision) ? d.date.slice(0, 7) : null);
+    const one = (xs) => xs.every((x) => x && x === xs[0]);
+    if (one(ds.map(day))) return { date: ds[0].date, precision: 'day' };
+    if (one(ds.map(month))) return { date: `${month(ds[0])}-01`, precision: 'month' };
+    if (one(ds.map((d) => d.date.slice(0, 4)))) return { date: `${ds[0].date.slice(0, 4)}-01-01`, precision: 'year' };
+    return { date: null, precision: 'unknown' };
+  }
+
+  /** One memory from chosen files (Sort My Photos by Date), in dc_import_add_items' shape. Photos already in a
+   *  memory are sent with reuse (a separate stored copy); the member's own date corrections travel in metadata. */
+  function memoryPayload(key, title, date, precision, files, corrections) {
+    return [{ key, title: String(title || 'Imported photos').slice(0, 200), occurred_on: precision === 'unknown' ? null : date,
+      date_precision: precision, folder_paths: [...new Set(files.map((f) => f.folderPath))].slice(0, 50), sort_order: 0,
+      items: files.map((f, i) => {
+        const it = itemPayload(f, i);
+        const c = corrections && corrections[f.qid];
+        if (c) it.metadata.member_date = { date: c.date || null, precision: c.precision };
+        if (f.reuse) it.reuse = true;
+        return it;
+      }) }];
+  }
+
   async function sha256Hex(buf, subtle) {
     const h = await (subtle || crypto.subtle).digest('SHA-256', buf);
     return [...new Uint8Array(h)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
 
-  return { MAX_DESCRIPTION, MAX_BYTES, LIMITS, setLimits, MAX_READABLE_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
+  return { findMoov, suspiciousCapture, sortDate, organizeByDate, suggestMemoryDate, memoryPayload, isoCapture, MAX_DESCRIPTION, MAX_BYTES, LIMITS, setLimits, MAX_READABLE_SECONDS, MAX_FILES, DISPLAY_WIDTH, TYPES, REASONS, SHORT_REASONS, skippedSummary, parseFolderName, classify,
     checkVideoLength, readJpegExif, readEmbeddedExif, readMp4, readMetadata, exifCapture, suggestGroups, groupDate,
     markDuplicates, makeState, edits, normalizeDate, toPayload, summary, dateLabel, formatBytes, sha256Hex, baseName, dirName };
 });

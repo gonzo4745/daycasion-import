@@ -1,8 +1,11 @@
 /* DayCasion Desktop Import (import.daycasion.com). Sign in -> choose a memory profile -> choose what to do:
- *   1. Create New Memories: folders become proposed memories; after one review they are created as saved memories.
+ *   1. Bulk Import Memories, two ways:
+ *      a. My Photos Are Organized: folders become proposed memories; after one review they are created as saved memories.
+ *      b. Sort My Photos by Date (organize.js): the folder is sorted by year and month on the computer; the member picks
+ *         photos and creates one memory at a time (only those photos are uploaded).
  *   2. Add to Existing Memory: files are added to one saved memory (its title, date and story are not changed).
- *   3. Bulk Upload for Later: files wait in the profile's Add Past Memories, to be organized in the app.
- *   4. Import My Eulogy (eulogy.js): the member's finished eulogy (No AI) or eulogy information (AI-assisted).
+ *   3. Upload for Later: up to 50 files wait in the profile's Add Past Memories, to be organized in the app.
+ *   Below them, Import My Eulogy (eulogy.js): the member's finished eulogy (No AI) or eulogy information (AI-assisted).
  * Every path stages the files first (dc_import_*), then 1 and 2 save them with the same server steps the app's
  * Add Past Memories uses (dc_import_begin_save / dc_import_begin_add_to_memory, storage move, dc_import_attach_item,
  * dc_import_finish_group), so ownership, plan, video and storage rules apply unchanged.
@@ -23,16 +26,23 @@
   const $app = document.getElementById('app');
   const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/heif': 'heif', 'image/webp': 'webp',
     'video/mp4': 'mp4', 'video/quicktime': 'mov' }; // as dc_import_ext
+  const LATER_MAX = 50; // Upload for Later: files per batch (the server enforces the same)
   const MODES = {
-    create: { label: 'Create New Memories', icon: '✦',
-      text: 'Turn your photos and videos into saved DayCasion memories. Review once, then create them automatically.',
+    bulk: { label: 'Bulk Import Memories', icon: '✦',
+      text: 'Create new DayCasion memories from your photos and videos. Use your existing folders or let DayCasion help organize your photos by date.',
+      hint: 'Two ways: My Photos Are Organized, or Sort My Photos by Date.' },
+    create: { label: 'My Photos Are Organized', icon: '▤', parent: 'bulk',
+      text: 'Already organized your photos into folders or events? Use your folders to create DayCasion memories.',
       hint: 'Best for folders of events, years, trips, childhood or pet photos.' },
+    organize: { label: 'Sort My Photos by Date', icon: '◷', parent: 'bulk',
+      text: 'Have a large collection of photos? Sort them by year and month, select the moments that matter, and create memories.',
+      hint: 'Sorted on your computer. Only the photos you choose are uploaded.' },
     existing: { label: 'Add to Existing Memory', icon: '＋',
-      text: 'Add photos or videos to a memory you\'ve already created.',
+      text: 'Choose a memory you\'ve already created, then add individual photos, videos, or entire folders.',
       hint: 'The memory\'s title, date and story stay as they are.' },
-    later: { label: 'Bulk Upload for Later', icon: '⇪',
-      text: 'Upload photos and videos now. Organize them into memories whenever you\'re ready.',
-      hint: 'They wait in Add Past Memories in the DayCasion app.' },
+    later: { label: 'Upload for Later', icon: '⇪',
+      text: 'Upload photos and videos without creating memories yet. Organize them later in the DayCasion app.',
+      hint: `Up to ${LATER_MAX} photos or videos at a time. They wait in Add Past Memories in the app.` },
     eulogy: { label: 'Import My Eulogy', icon: '✎',
       text: 'Upload your finished eulogy, or information for DayCasion to prepare it with AI.',
       hint: 'Private. Only your Legacy Executor receives the final eulogy.' },
@@ -134,7 +144,7 @@
     if (session && session.expires_at - Date.now() / 1000 < 90) await refresh();
     let r = await api(path, { ...opts, auth: true });
     if (r.status === 401 && await refresh()) r = await api(path, { ...opts, auth: true });
-    if (r.status === 401) { signOut(); throw new Error('signed-out'); }
+    if (r.status === 401) { endSession(); throw new Error('signed-out'); }
     return r;
   }
   const rpc = (fn, args) => authed(`/rest/v1/rpc/${fn}`, { method: 'POST', body: args || {} });
@@ -142,7 +152,17 @@
   /** DayCasion's own explanation (plan, storage, …); a dropped connection or server hiccup in plain words. */
   const plainErr = (r, fallback) => (!r || r.offline || r.status >= 500 ? 'The connection was interrupted. Please try again.' : errText(r, fallback));
   const countOf = (r) => +(String((r && r.headers && r.headers.get('content-range')) || '').split('/')[1] || 0);
-  function signOut() { if (session) api('/auth/v1/logout', { method: 'POST', auth: true }); session = null; saveSession(null); viewSignIn(); }
+  async function signOut() {
+    const uid = session && session.user && session.user.id;
+    const O = window.DcOrganize;
+    if (uid && O && await O.hasLocal(uid).catch(() => false)) {
+      const forget = await choose({ title: 'Signing out', body: ['Unfinished sorting from Sort My Photos by Date is kept in this browser so you can continue later. On a shared computer, you can forget it now.',
+        'Memories you created stay in DayCasion either way.'], options: [{ label: 'Keep it for next time', value: 'keep' }, { label: 'Forget it on this computer', value: 'forget', secondary: true }] });
+      if (forget === 'forget') await O.forget(uid).catch(() => null);
+    }
+    endSession();
+  }
+  function endSession() { if (session) api('/auth/v1/logout', { method: 'POST', auth: true }); session = null; saveSession(null); viewSignIn(); }
 
   // What each unfinished import was for, so "Continue it" finishes it the same way (this browser only).
   function runs() { try { return JSON.parse(localStorage.getItem(RUNS_KEY) || '{}') || {}; } catch (e) { return {}; } }
@@ -198,7 +218,7 @@
       [profiles, storage, batches] = await Promise.all([
         authed('/rest/v1/memory_profiles?select=id,name,type&order=created_at'),
         rpc('dc_account_storage'),
-        authed('/rest/v1/import_batches?select=id,memory_profile_id,source_name,status,created_at&status=eq.uploading&order=created_at.desc'),
+        authed('/rest/v1/import_batches?select=id,memory_profile_id,source_name,status,created_at,purpose&status=eq.uploading&order=created_at.desc'),
       ]);
     } catch (e) { return; }
     if (!profiles.ok) return show(card(el('p', { class: 'err', text: "We couldn't load your memory profiles. Please reload the page." })));
@@ -224,8 +244,9 @@
     const resumeCards = unfinished.map((b, i) => {
       const p = S.profiles.find((x) => x.id === b.memory_profile_id);
       const info = known[b.id] || {};
-      const what = info.mode === 'create' ? 'Create New Memories' : info.mode === 'existing' ? `Add to ${quoted(info.title || 'a memory')}`
-        : info.mode === 'later' ? 'Bulk Upload for Later' : 'Import';
+      const mode = b.purpose || info.mode;
+      const what = mode === 'create' ? 'My Photos Are Organized' : mode === 'organize' ? 'Sort My Photos by Date'
+        : mode === 'existing' ? `Add to ${quoted(info.title || 'a memory')}` : mode === 'later' ? 'Upload for Later' : 'Import';
       return el('div', { class: 'note' },
         el('strong', { text: `Unfinished: ${what} for ${p ? p.name : 'a memory profile'}` }),
         el('p', { class: 'small', text: `${b.source_name || 'Your folders'} · started ${new Date(b.created_at).toLocaleString()}${pending[i] ? ` · ${plural(pending[i], 'file')} not uploaded yet` : ''}.` }),
@@ -252,19 +273,34 @@
   function startProfile(p) { clearSelection(); S.profile = p; S.mode = null; S.target = null; S.resume = null; viewMode(); }
 
   // ------------------------------------------------------------------ 3. what to do
+  const option = (m) => el('button', { class: 'choice', id: `mode-${m}`, 'data-mode': m, onclick: () => chooseMode(m) },
+    el('span', { class: 'choice-icon', 'aria-hidden': 'true', text: MODES[m].icon }),
+    el('strong', { text: MODES[m].label }),
+    el('span', { class: 'choice-text', text: MODES[m].text }),
+    el('span', { class: 'choice-hint', text: MODES[m].hint }));
+  /** Three photo choices; Import My Eulogy is its own section below them (My Life profiles, as before). */
   function viewMode() {
     clearSelection(); S.resume = null;
-    const option = (m) => el('button', { class: 'choice', id: `mode-${m}`, 'data-mode': m, onclick: () => chooseMode(m) },
-      el('span', { class: 'choice-icon', 'aria-hidden': 'true', text: MODES[m].icon }),
-      el('strong', { text: MODES[m].label }),
-      el('span', { class: 'choice-text', text: MODES[m].text }),
-      el('span', { class: 'choice-hint', text: MODES[m].hint }));
     show(card(el('div', { class: 'row' }, el('h2', { text: 'What would you like to do with these photos and videos?' }),
       el('button', { class: 'link', onclick: viewProfiles, text: `For ${S.profile.name} · change` })),
-    el('div', { class: 'choices' }, option('create'), option('existing'), option('later'), S.profile.type === 'My Life' ? option('eulogy') : null)));
+    el('div', { class: 'choices three' }, option('bulk'), option('existing'), option('later'))),
+    S.profile.type === 'My Life' ? card(el('h2', { text: 'My Eulogy' }),
+      el('p', { class: 'muted small', text: MODES.eulogy.text + ' ' + MODES.eulogy.hint }),
+      el('div', { class: 'actions' }, el('button', { id: 'mode-eulogy', class: 'secondary', onclick: () => chooseMode('eulogy'), text: MODES.eulogy.label }))) : null);
+  }
+  /** Bulk Import Memories: the two ways to create new memories. */
+  function viewBulk() {
+    clearSelection(); S.resume = null; S.mode = null;
+    show(card(el('div', { class: 'row' }, el('h2', { text: 'Bulk Import Memories' }),
+      el('button', { class: 'link', onclick: viewMode, text: 'Back to all choices' })),
+    el('p', { class: 'crumbs small' }, 'For ', el('strong', { text: S.profile.name }), ' · ', el('strong', { text: MODES.bulk.label })),
+    el('p', { class: 'muted', text: 'How are your photos arranged today?' }),
+    el('div', { class: 'choices' }, option('create'), option('organize'))));
   }
   function chooseMode(m) {
     if (m === 'eulogy') return openEulogy(viewMode);
+    if (m === 'bulk') return viewBulk();
+    if (m === 'organize') return openOrganize();
     S.mode = m; S.target = null; if (m === 'existing') viewPickMemory(); else viewChoose();
   }
   /** Import My Eulogy (eulogy.js). Needs no plan (preparing needs the Eulogy purchase; viewing it does not), so it is also
@@ -277,10 +313,23 @@
       token: async () => { if (session && session.expires_at - Date.now() / 1000 < 300) await refresh(); return session && session.access_token; } });
   }
 
-  /** "For Audrey · Create New Memories · change": where the member is, with a way back to the three choices. */
+  /** Sort My Photos by Date (organize.js), with the same sign-in, storage and import steps as the other choices. */
+  function openOrganize() {
+    clearSelection(); S.mode = 'organize'; S.target = null;
+    window.DcOrganize.open({ el, show, card, choose, ask, rpc, authed, plainErr, errText, plural, quoted, counts, countsAnd,
+      session: () => session, profile: S.profile, storage: () => S.storage, crumbs, back: viewBulk, home: viewMode,
+      stageFile, putObject, displayBlob, posterBlob, removeStored, probeImage, probeVideo, rememberRun, forgetRun, filesFromDrop,
+      cancelBatch: (id) => new Promise((resolve) => cancelBatch(id, resolve)), redrawInPlace,
+      refreshStorage: async () => { const r = await rpc('dc_account_storage').catch(() => null); if (r && r.ok) S.storage = r.data; return S.storage; } });
+  }
+
+  /** "For Audrey · Bulk Import Memories › My Photos Are Organized · choose something else": where the member is, with a
+   *  way back (to the two Bulk Import choices, or to the three choices). */
   function crumbs(extra) {
-    return el('p', { class: 'crumbs small' }, 'For ', el('strong', { text: S.profile.name }), ' · ', el('strong', { text: MODES[S.mode].label }), ' · ',
-      el('button', { class: 'link', onclick: async () => { if (!S.state || await ask('Choose something else?', 'Your changes on this page will be lost. Nothing has been uploaded.', 'Choose something else')) viewMode(); }, text: 'choose something else' }),
+    const m = MODES[S.mode]; const back = m.parent ? viewBulk : viewMode;
+    return el('p', { class: 'crumbs small' }, 'For ', el('strong', { text: S.profile.name }), ' · ',
+      m.parent ? el('strong', { text: `${MODES[m.parent].label} › ${m.label}` }) : el('strong', { text: m.label }), ' · ',
+      el('button', { class: 'link', onclick: async () => { if (!S.state || await ask('Choose something else?', 'Your changes on this page will be lost. Nothing has been uploaded.', 'Choose something else')) back(); }, text: 'choose something else' }),
       extra || null);
   }
 
@@ -350,15 +399,34 @@
     const intro = {
       create: 'Choose a folder, even a parent folder with years or events inside it. DayCasion suggests one memory per event folder, for example 2014 › Dec 23 › Christmas. You\'ll review the titles and dates before anything is uploaded.',
       existing: 'Choose the photos and videos to add. You\'ll see them before anything is uploaded.',
-      later: 'Choose whole folders or individual photos and videos. You\'ll see them before anything is uploaded.',
+      later: `Choose whole folders or individual photos and videos, up to ${LATER_MAX} at a time. You'll see them before anything is uploaded.`,
     }[S.mode];
+    const waitingNote = S.mode === 'later' ? el('p', { class: 'small muted', 'data-waiting': '' }) : null;
+    if (waitingNote) waitingCount().then((n) => { waitingNote.textContent = waitingText(n); });
     show(card(el('h2', { text: S.resume ? 'Continue the unfinished import' : MODES[S.mode].label }),
       S.resume ? null : crumbs(),
       S.mode === 'existing' && S.target && !S.resume ? targetLine() : null,
       S.resume ? el('p', { class: 'note small', text: `Choose the same folder you used before (${S.resume.batch.source_name || 'your folders'}). Files already uploaded are skipped.` })
         : el('p', { class: 'intro', text: intro }),
-      drop));
+      waitingNote, drop));
   }
+
+  /** Files from the computer waiting in the app's Add Past Memories for this profile (photos added on the phone are
+   *  kept on the phone, so they can't be counted here). Null when it can't be read. */
+  async function waitingCount() {
+    try {
+      const g = await authed(`/rest/v1/import_groups?select=id&memory_profile_id=eq.${S.profile.id}&status=eq.open`);
+      if (!g.ok) return null;
+      const ids = (g.data || []).map((x) => x.id); let n = 0;
+      for (let i = 0; i < ids.length; i += 80) {
+        const r = await authed(`/rest/v1/import_items?select=id&group_id=in.(${ids.slice(i, i + 80).join(',')})&status=in.(pending,ready)`, { headers: { Prefer: 'count=exact', Range: '0-0' } });
+        if (!r.ok) return null; n += countOf(r);
+      }
+      return n;
+    } catch (e) { return null; }
+  }
+  const waitingText = (n) => (n == null ? '' : n === 0 ? `Nothing from your computer is waiting in the app for ${S.profile.name} yet.`
+    : `${plural(n, 'file')} from your computer ${n === 1 ? 'is' : 'are'} already waiting in the app for ${S.profile.name}, ready to organize in Add Past Memories.`);
 
   /** Folders dropped from Finder or Explorer, walked recursively (nested folders keep their full relative paths). */
   async function filesFromDrop(dt) {
@@ -667,10 +735,22 @@
         g.items.length > shown.length ? el('button', { class: 'link', onclick: () => { g.showAll = true; viewReviewFiles(); }, text: `Show all ${g.items.length}` }) : null);
     });
     const label = existing ? `Add ${filesWord(n)} to This Memory` : `Upload ${filesWord(n)} for Later`;
+    const tooMany = !existing && n > LATER_MAX;
+    const all = st.groups.flatMap((g) => g.items);
+    const limitNote = !existing && all.length > LATER_MAX ? el('div', { class: 'note limit', role: 'note', id: 'later-limit' },
+      el('strong', { text: `Upload up to ${LATER_MAX} photos or videos at a time.` }),
+      el('p', { text: `You chose ${plural(all.length, 'file')}${n !== all.length ? ` and ${n.toLocaleString()} ${n === 1 ? 'is' : 'are'} included` : ''}. Choose which ${LATER_MAX} to upload now: use Remove and Put back on each file, or the buttons below. You can upload the rest in another batch. For larger collections, try Bulk Import Memories to organize photos before uploading.` }),
+      el('div', { class: 'actions' },
+        el('button', { class: 'small', id: 'keep-first', onclick: () => { S.state = C.edits.exclude(C.edits.exclude(S.state, all, false), all.slice(LATER_MAX), true); viewReviewFiles(); }, text: `Include only the first ${LATER_MAX}` }),
+        el('button', { class: 'small secondary', id: 'leave-all', onclick: () => { S.state = C.edits.exclude(S.state, all, true); viewReviewFiles(); }, text: 'Leave all out, then choose' }))) : null;
+    const waitingNote = !existing ? el('p', { class: 'small muted', 'data-waiting': '' }) : null;
+    if (waitingNote) waitingCount().then((c) => { waitingNote.textContent = waitingText(c); });
+    if (limitNote || waitingNote) top.append(...[waitingNote, limitNote].filter(Boolean));
     (fresh ? show : redrawInPlace)(top, ...sections,
       actionBar(`${counts(sum.photos, sum.videos)} · ${C.formatBytes(sum.bytes)}`,
-        over ? `This is more than your remaining storage (${C.formatBytes(Math.max(0, storageLeft()))}). Remove some files, or add storage in the app.` : null,
-        el('button', { id: 'upload', disabled: !n || over || null, onclick: existing ? confirmExisting : confirmLater, text: label })));
+        tooMany ? `Upload for Later takes up to ${LATER_MAX} at a time: leave out ${plural(n - LATER_MAX, 'more file')} to continue.`
+          : over ? `This is more than your remaining storage (${C.formatBytes(Math.max(0, storageLeft()))}). Remove some files, or add storage in the app.` : null,
+        el('button', { id: 'upload', disabled: !n || over || tooMany || null, onclick: existing ? confirmExisting : confirmLater, text: label })));
   }
 
   function skippedList(skipped, open) {
@@ -718,6 +798,7 @@
   }
   async function confirmLater() {
     const sum = C.summary(S.state);
+    if (sum.photos + sum.videos > LATER_MAX) return;
     const ok = await ask(`Upload ${plural(sum.photos + sum.videos, 'file')} for later?`,
       [`${countsAnd(sum.photos, sum.videos)} (${C.formatBytes(sum.bytes)}) will wait in ${S.profile.name}'s Add Past Memories in the DayCasion app.`, 'They won\'t become memories until you organize them there. Your files stay on this computer.'],
       `Upload ${filesWord(sum.photos + sum.videos)}`);
@@ -733,7 +814,7 @@
 
   async function startRun() {
     const view = runView();
-    const started = await rpc('dc_import_start', { p_profile_id: S.profile.id, p_source_name: topFolders() });
+    const started = await rpc('dc_import_start', { p_profile_id: S.profile.id, p_source_name: topFolders(), p_purpose: S.mode });
     if (!started.ok) return view.fail(errText(started, "We couldn't start the import. Please try again."));
     S.batch = started.data.batch_id;
     rememberRun(S.batch, { mode: S.mode, memoryId: S.target ? S.target.id : null, title: S.target ? S.target.title : null,
@@ -762,7 +843,9 @@
     clearSelection();
     S.profile = profile; S.resume = { batch };
     const info = runs()[batch.id] || {};
-    S.mode = info.mode || null;
+    // What the import is for, as DayCasion recorded it (Sort My Photos by Date finishes like a folder import: its
+    // memory is saved with the reviewed title and date).
+    S.mode = batch.purpose === 'organize' ? 'create' : (batch.purpose || info.mode || null);
     S.target = info.memoryId ? { id: info.memoryId, title: info.title || 'your memory' } : null;
     authed(`/rest/v1/import_items?select=id&batch_id=eq.${batch.id}&status=eq.pending`, { headers: { Prefer: 'count=exact', Range: '0-0' } }).then(countOf)
       .then((pending) => { if (pending) viewChoose(); else resumeRun([]); }).catch(() => {});
@@ -770,9 +853,14 @@
 
   async function resumeRun(files) {
     S.batch = S.resume.batch.id;
-    if (!S.mode) { // started before this browser remembered what it was for, or on another computer
-      const m = await choose({ title: 'What should happen to these files?', body: 'This import was started earlier. Choose how to finish it.',
-        options: [{ label: 'Create memories from them now', value: 'create' }, { label: 'Leave them for later', value: 'later', secondary: true }] });
+    if (!S.mode) { // started before imports recorded what they were for, and not on this browser
+      // Upload for Later holds at most 50 files: a larger import can only become memories.
+      const all = await authed(`/rest/v1/import_items?select=id&batch_id=eq.${S.batch}`, { headers: { Prefer: 'count=exact', Range: '0-0' } }).then(countOf).catch(() => 0);
+      const options = [{ label: 'Create memories from them now', value: 'create' }];
+      if (all <= LATER_MAX) options.push({ label: 'Leave them for later', value: 'later', secondary: true });
+      const m = await choose({ title: 'What should happen to these files?', body: all > LATER_MAX
+        ? `This import was started earlier. It has ${plural(all, 'file')}, more than Upload for Later's ${LATER_MAX}, so it is finished by creating memories.`
+        : 'This import was started earlier. Choose how to finish it.', options });
       if (!m) return viewProfiles();
       S.mode = m; rememberRun(S.batch, { mode: m });
     }
@@ -1019,21 +1107,41 @@
   async function uploadOne(t, onProgress) {
     const file = t.f.key ? fileByKey.get(t.f.key) : null;
     if (!file) throw Object.assign(new Error('missing'), { permanent: true, userMessage: 'The file is no longer available on this computer' });
-    // Optional preview copies first (small); a failure there never stops the photo itself.
-    if (t.res.display_path) { try { const b = await displayBlob(file); if (b) await putObject(t.res.display_path, b, 'image/jpeg'); } catch (e) { /* optional */ } }
-    if (t.res.poster_path) { try { const b = await posterBlob(file, 480); if (b) await putObject(t.res.poster_path, b, 'image/jpeg'); } catch (e) { /* optional */ } }
-    await putObject(t.res.storage_path, file, t.f.mime, (pct) => { t.pct = pct; onProgress(); });
-    let fin = await rpc('dc_import_finalize_item', { p_item_id: t.res.item_id });
-    if (!fin.ok && /incomplete/.test(errText(fin, ''))) {
+    await stageFile(file, t.f.mime, t.res, (pct) => { t.pct = pct; onProgress(); });
+  }
+
+  /** Stores one staged import file and confirms it with DayCasion (dc_import_finalize_item: size, type, plan, video and
+   *  storage are checked there). res: { item_id, storage_path, display_path, poster_path } from dc_import_add_items.
+   *  With res.copy_from (an intentional reuse), the photo is copied inside DayCasion's storage from the member's own
+   *  memory file instead of being uploaded again; if that copy can't be made, the file on this computer is uploaded. */
+  async function stageFile(file, mime, res, onPct) {
+    let copied = false;
+    if (res.copy_from) {
+      const c = await authed('/storage/v1/object/copy', { method: 'POST', body: { bucketId: 'memory-media', sourceKey: res.copy_from, destinationKey: res.storage_path } });
+      copied = c.ok || /already exists|Duplicate/i.test(JSON.stringify(c.data || ''));
+      if (copied && res.display_path && res.copy_display_from) {
+        await authed('/storage/v1/object/copy', { method: 'POST', body: { bucketId: 'memory-media', sourceKey: res.copy_display_from, destinationKey: res.display_path } }).catch(() => null);
+      }
+      if (copied && onPct) onPct(100);
+    }
+    if (!copied) {
+      if (!file) throw Object.assign(new Error('missing'), { permanent: true, userMessage: 'The file is no longer available on this computer' });
+      // Optional preview copies first (small); a failure there never stops the photo itself.
+      if (res.display_path) { try { const b = await displayBlob(file); if (b) await putObject(res.display_path, b, 'image/jpeg'); } catch (e) { /* optional */ } }
+      if (res.poster_path) { try { const b = await posterBlob(file, 480); if (b) await putObject(res.poster_path, b, 'image/jpeg'); } catch (e) { /* optional */ } }
+      await putObject(res.storage_path, file, mime, onPct);
+    }
+    let fin = await rpc('dc_import_finalize_item', { p_item_id: res.item_id });
+    if (!fin.ok && /incomplete|did not finish/.test(errText(fin, '')) && file) {
       // A copy cut short (e.g. a connection dropped at the end): replace it once.
-      await removeStored([t.res.storage_path]);
-      await putObject(t.res.storage_path, file, t.f.mime, (pct) => { t.pct = pct; onProgress(); });
-      fin = await rpc('dc_import_finalize_item', { p_item_id: t.res.item_id });
+      await removeStored([res.storage_path]);
+      await putObject(res.storage_path, file, mime, onPct);
+      fin = await rpc('dc_import_finalize_item', { p_item_id: res.item_id });
     }
     if (!fin.ok) throw Object.assign(new Error('finalize'), { userMessage: errText(fin, 'Upload not confirmed'), permanent: fin.status === 400 && /match|incomplete/.test(errText(fin, '')) });
     if (fin.data && fin.data.status === 'rejected') {
       // DayCasion can't keep it now (storage full, plan or video plan ended): its copy is removed straight away.
-      await removeStored([t.res.storage_path, t.res.display_path, t.res.poster_path].filter(Boolean));
+      await removeStored([res.storage_path, res.display_path, res.poster_path].filter(Boolean));
       throw Object.assign(new Error('rejected'), { permanent: true, reason: fin.data.reason, userMessage: C.REASONS[fin.data.reason] || 'Not kept' });
     }
   }
