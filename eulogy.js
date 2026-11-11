@@ -68,20 +68,23 @@
       h('div', { class: 'choices' },
         option('eu-completed', '✓', OPTION.completed,
           'Upload your finished eulogy. It is kept exactly as you wrote it and never sent to AI. Your executor receives it with a copy of your original document.',
-          completed ? `Uploaded: ${completed.file_name}` : 'Nothing uploaded yet', viewCompleted),
+          completed ? `Uploaded: ${completed.file_name}` : 'Nothing uploaded yet', () => viewCompleted()),
         option('eu-information', '✎', OPTION.ai,
           'Download the Eulogy Preparation Guide, answer any questions you like, and upload it or your own notes. DayCasion writes your eulogy with AI. Your executor receives only the finished eulogy.',
-          infos.length ? `${infos.length} information ${infos.length === 1 ? 'file' : 'files'} uploaded` : 'Nothing uploaded yet', viewInformation)),
+          infos.length ? `${infos.length} information ${infos.length === 1 ? 'file' : 'files'} uploaded` : 'Nothing uploaded yet', () => viewInformation())),
       h('p', { class: 'small muted', text: 'You can upload, review, replace or delete your files here at any time until your legacy process begins.' })));
   }
 
   // ------------------------------------------------------------------ My Completed Eulogy (No AI)
+  /** Only a real note (text or an element) is shown; anything else, such as a click event, is ignored. */
+  const noteOf = (m) => (typeof m === 'string' ? (m ? h('p', { text: m }) : null) : m instanceof Node ? m : null);
+
   async function viewCompleted(message) {
     try { await load(); } catch (e) { return X.show(errorCard(e.userMessage || 'Please reload the page.')); }
     const d = docs('completed')[0];
     const parts = [heading(OPTION.completed, viewHome, 'Back to My Eulogy'),
       h('p', { text: 'Your own finished eulogy, delivered word for word. DayCasion never sends it to AI and never changes it.' }),
-      ...statusNotes(), message || null];
+      ...statusNotes(), noteOf(message)];
     if (d) {
       parts.push(h('div', { class: 'note target', id: 'eu-doc' }, h('strong', { text: d.file_name }),
         h('span', { class: 'small muted', text: `${typeName(d.file_type)} · ${fmtSize(d.size_bytes)} · uploaded ${fmtDate(d.ready_at)}` }),
@@ -116,7 +119,7 @@
       h('div', { class: 'actions' }, GUIDE.map((g) => h('a', { class: 'btn secondary', href: g.file, download: g.file.split('/').pop(), title: g.note, text: `Download: ${g.label}` }))));
     const parts = [heading(OPTION.ai, viewHome, 'Back to My Eulogy'),
       h('p', { text: 'Tell DayCasion what you want said about your life. With your permission, DayCasion uses AI to write your eulogy from what you upload, and never invents details. Your executor receives only the finished eulogy, never your guide, answers or notes.' }),
-      ...statusNotes(), message || null, guide];
+      ...statusNotes(), noteOf(message), guide];
     if (list.length) {
       const ul = h('ul', { class: 'eu-files', id: 'eu-info-list' });
       for (const d of list) {
