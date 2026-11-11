@@ -292,7 +292,7 @@
   const VIDEO_TYPES = '.mp4,.mov,.m4v,video/mp4,video/quicktime';
   const MAX_VIDEO_SECONDS = 3600;
   const CHUNK = 6 * 1024 * 1024; // Supabase resumable uploads: 6 MB pieces
-  const fmtBytes = (b) => { b = Number(b) || 0; if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)} GB`; if (b >= 1048576) return `${Math.round(b / 1048576)} MB`; return `${Math.max(1, Math.ceil(b / 1024))} KB`; };
+  const fmtBytes = (b) => { b = Number(b) || 0; if (b <= 0) return '0 KB'; if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)} GB`; if (b >= 1048576) return `${Math.round(b / 1048576)} MB`; return `${Math.max(1, Math.ceil(b / 1024))} KB`; };
   const clock = (s) => { s = Math.round(Number(s) || 0); const hh = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
     return hh ? `${hh}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`; };
 
