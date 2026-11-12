@@ -62,7 +62,7 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
     return e;
   }
-  const show = (...nodes) => { $app.replaceChildren(...nodes); window.scrollTo(0, 0); };
+  const show = (...nodes) => { $app.replaceChildren(...nodes.filter((n) => n != null && n !== false)); window.scrollTo(0, 0); }; // an absent section is skipped, never shown as "null"
   /** Redraws the same screen after an edit without moving the page: the memory being edited stays where it was on
    * screen (and its control keeps focus); otherwise the scroll position is kept. */
   function redrawInPlace(...nodes) {
@@ -72,7 +72,7 @@
     const top = section ? section.getBoundingClientRect().top : null;
     const label = active && active.getAttribute ? active.getAttribute('aria-label') : null;
     const y = window.scrollY;
-    $app.replaceChildren(...nodes);
+    $app.replaceChildren(...nodes.filter((n) => n != null && n !== false));
     const again = key ? [...$app.querySelectorAll('section.group')].find((x) => x.getAttribute('data-group') === key) : null;
     if (again) {
       window.scrollTo(0, window.scrollY + again.getBoundingClientRect().top - top);
