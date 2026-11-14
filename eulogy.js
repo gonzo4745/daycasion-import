@@ -14,7 +14,9 @@
     { file: 'guide/DayCasion-Eulogy-Preparation-Guide.pdf', label: 'Printable PDF', note: 'for planning on paper' },
   ];
   const MAX_BYTES = 10 * 1024 * 1024;
-  const OPTION = {
+  // The AI-permission wording shown in chooseAi(); recorded with the permission (dc_my_eulogy_set_option).
+const EULOGY_CONSENT_VERSION = 'eulogy-2026-11-14';
+const OPTION = {
     none: 'No eulogy',
     completed: 'My Completed Eulogy (No AI)',
     ai: 'My Eulogy Information (AI-assisted)',
@@ -202,7 +204,7 @@
     const mem = h('input', { type: 'checkbox', id: 'eu-src-memories' }); mem.checked = !!info.ai_memories;
     const ls = h('input', { type: 'checkbox', id: 'eu-src-lifestory' }); ls.checked = !!info.ai_life_story;
     const ok = await X.choose({ title: 'Allow DayCasion to write your eulogy with AI?', body: [
-      'When your legacy process begins, DayCasion sends the information files you uploaded here to OpenAI, only to write your eulogy for your Legacy Executor. OpenAI doesn\'t keep it or use it for training.',
+      'When your legacy process begins, DayCasion sends the information files you uploaded here to OpenAI, only to write your eulogy for your Legacy Executor. OpenAI doesn\'t use it to train its models. OpenAI may keep it for up to 30 days to check for misuse, or longer where the law requires or to prevent harm.',
       'AI follows the tone you asked for and leaves out the topics you asked it to leave out. It never invents names, places, events or quotations.',
       h('p', { class: 'small', text: 'You can also let AI use (optional):' }),
       h('label', { class: 'check' }, mem, ' My memory descriptions (the written stories of my My Life profile)'),
@@ -214,8 +216,10 @@
   }
 
   async function setOption(option, src, then) {
+    // 'ai' is only ever chosen from the permission dialog above, so its wording version is recorded with it.
     const r = await X.rpc('dc_my_eulogy_set_option', { p_option: option, p_ai_memories: !!(src && src.memories),
-      p_ai_life_story: !!(src && src.lifeStory), p_ai_permission: option === 'ai' });
+      p_ai_life_story: !!(src && src.lifeStory), p_ai_permission: option === 'ai',
+      ...(option === 'ai' ? { p_consent_version: EULOGY_CONSENT_VERSION } : {}) });
     if (!r.ok) return then(h('p', { class: 'err', role: 'alert', text: X.plainErr(r, 'That didn\'t save. Please try again.') }));
     then(h('p', { class: 'ok', role: 'status', text: option === 'ai' ? 'Saved. AI-assisted eulogy is selected.' : option === 'completed' ? 'Saved. Your completed eulogy is selected.' : 'Saved.' }));
   }
