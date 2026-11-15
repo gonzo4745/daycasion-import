@@ -62,6 +62,10 @@
     for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
     return e;
   }
+  // Native DOM calls print a null child as the text "null": optional parts (cond ? el(...) : null) are skipped instead.
+  const kids = (a) => a.flat().filter((n) => n != null && n !== false);
+  const put = (node, ...a) => node.replaceChildren(...kids(a));
+  const add = (node, ...a) => node.append(...kids(a));
   const show = (...nodes) => { $app.replaceChildren(...nodes.filter((n) => n != null && n !== false)); window.scrollTo(0, 0); }; // an absent section is skipped, never shown as "null"
   /** Redraws the same screen after an edit without moving the page: the memory being edited stays where it was on
    * screen (and its control keeps focus); otherwise the scroll position is kept. */
@@ -353,7 +357,7 @@
     const paint = () => {
       const q = search.value.trim().toLowerCase();
       const shown = rows.filter((m) => !q || m.title.toLowerCase().includes(q));
-      list.replaceChildren(...shown.map((m) => el('button', { class: 'memory', role: 'listitem', 'data-memory': m.id, onclick: () => { S.target = m; viewChoose(); } },
+      put(list, ...shown.map((m) => el('button', { class: 'memory', role: 'listitem', 'data-memory': m.id, onclick: () => { S.target = m; viewChoose(); } },
         el('strong', { text: m.title }), el('span', { text: `${C.dateLabel(m.date, m.precision)} · ${plural(m.count, 'item')}` }))),
       shown.length ? null : el('p', { class: 'muted', text: 'No memories match.' }));
     };
@@ -883,7 +887,7 @@
       msg, actions, list));
     return { head, line, bar, list, msg, actions, leave,
       fail(text, canCancel) { msg.textContent = text; window.removeEventListener('beforeunload', leave);
-        actions.replaceChildren(el('button', { onclick: viewProfiles, text: 'Back' }), canCancel && S.batch ? el('button', { class: 'secondary', onclick: () => cancelBatch(S.batch, viewProfiles), text: 'Cancel import' }) : null); } };
+        put(actions, el('button', { onclick: viewProfiles, text: 'Back' }), canCancel && S.batch ? el('button', { class: 'secondary', onclick: () => cancelBatch(S.batch, viewProfiles), text: 'Cancel import' }) : null); } };
   }
 
   /** Loads the import's proposed memories and files from DayCasion (the reviewed titles and dates were stored with them). */

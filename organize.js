@@ -60,6 +60,10 @@
 
   // ------------------------------------------------------------------ small helpers
   const el = (...a) => X.el(...a);
+  // Native DOM calls print a null child as the text "null": optional parts (cond ? el(...) : null) are skipped instead.
+  const kids = (a) => a.flat().filter((n) => n != null && n !== false);
+  const put = (node, ...a) => node.replaceChildren(...kids(a));
+  const add = (node, ...a) => node.append(...kids(a));
   const card = (...k) => X.card(...k);
   const pool = async (items, n, fn) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length && !O.cancelled) await fn(items[i++]); })); };
   const read = (file, from, to) => file.slice(from, to).arrayBuffer();
@@ -536,7 +540,7 @@
       if (f.kind === 'photo') media.addEventListener('error', () => media.replaceWith(el('p', { class: 'muted', text: 'This browser can\'t show this photo (HEIC photos show in Safari). It can still be imported.' })));
       body.replaceChildren(media);
       const s = f.hash && O.server && O.server.byHash.get(f.hash); const dt = C.sortDate(f, O.corrections);
-      info.replaceChildren(el('strong', { text: C.baseName(f.relativePath) }), el('div', { class: 'muted', text: f.folderPath }),
+      put(info, el('strong', { text: C.baseName(f.relativePath) }), el('div', { class: 'muted', text: f.folderPath }),
         el('div', { text: `${dt ? (dt.source === 'member' ? 'Date (changed by you): ' : 'Taken: ') + (dt.precision === 'day' && f.capture && f.capture.local && dt.source !== 'member' ? new Date(f.capture.local).toLocaleString() : fmtDay(dt)) : 'Date not known'} · ${C.formatBytes(f.size)}` }),
         s && s.used ? el('div', { text: `Already used in: ${s.titles.join(', ') || 'a memory'}` }) : null,
         blocked(f) ? el('div', { class: 'err', text: blocked(f) }) : null);
@@ -620,7 +624,7 @@
     const go = el('button', { id: 'org-create-go', disabled: over || null, text: 'Create Memory' });
     const back = el('button', { class: 'link', id: 'org-create-back', onclick: () => d.close(), text: 'Go back' });
     const d = el('dialog', { class: 'dlg create', 'aria-labelledby': 'org-create-title' });
-    d.append(el('h2', { id: 'org-create-title', text: `New memory with ${plural(files.length, 'photo')}` }),
+    add(d, el('h2', { id: 'org-create-title', text: `New memory with ${plural(files.length, 'photo')}` }),
       el('p', { class: 'small muted' }, 'For ', el('strong', { text: X.profile.name }), ` · ${X.counts(files.filter((f) => f.kind === 'photo').length, files.filter((f) => f.kind === 'video').length)} · ${C.formatBytes(bytes)}`),
       strip,
       el('label', { for: 'org-title', text: 'Title' }), title,
@@ -646,7 +650,7 @@
         return;
       }
       go.disabled = false; go.textContent = 'Try again';
-      msg.replaceChildren(el('span', { text: res.error + ' ' }), res.batch ? el('button', { class: 'link', id: 'org-create-cancel', onclick: async () => {
+      put(msg, el('span', { text: res.error + ' ' }), res.batch ? el('button', { class: 'link', id: 'org-create-cancel', onclick: async () => {
         await X.cancelBatch(res.batch); X.forgetRun(res.batch); O.pending = null; for (const f of files) if (f.state) f.state = null; d.close(); viewGallery(false);
       }, text: 'Cancel this memory' }) : null);
     });
